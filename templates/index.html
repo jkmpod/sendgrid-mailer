@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SendGrid Mailer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --border: #dde1e6;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --warning: #d97706;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+    }
+
+    section h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    input[type="text"],
+    input[type="file"],
+    textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 0.9rem;
+      background: var(--bg);
+    }
+
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: "Consolas", "Monaco", monospace;
+      font-size: 0.85rem;
+      tab-size: 2;
+    }
+
+    input:focus, textarea:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: -1px;
+      border-color: var(--primary);
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    /* Chips */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .chip {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      background: #e0e7ff;
+      color: #3730a3;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .chip:hover { background: #c7d2fe; }
+
+    /* Preview table */
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 0.75rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--bg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* Status messages */
+    .status {
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+    }
+    .status.info { background: #dbeafe; color: #1e40af; }
+    .status.success { background: #dcfce7; color: #166534; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+
+    .hidden { display: none; }
+
+    /* Log panel */
+    #log-list {
+      max-height: 260px;
+      overflow-y: auto;
+      font-size: 0.82rem;
+      font-family: monospace;
+    }
+
+    .log-entry {
+      padding: 0.3rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .log-entry.ok { color: var(--success); }
+    .log-entry.failed { color: var(--danger); }
+
+    /* Progress bar */
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Preview iframe */
+    #preview-frame {
+      width: 100%;
+      min-height: 120px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-top: 0.5rem;
+      background: #fff;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .field-group {
+      margin-bottom: 0.75rem;
+    }
+
+    .badge-test {
+      display: inline-block;
+      padding: 0.3rem 0.75rem;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #f59e0b;
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+<h1>SendGrid Mailer</h1>
+
+<div class="grid">
+
+  <!-- 1. CSV UPLOADER -->
+  <section id="uploader-section">
+    <h2>CSV Uploader</h2>
+    <label for="csv-file">Select a .csv file</label>
+    <input type="file" id="csv-file" accept=".csv">
+
+    <div id="upload-status" class="status info hidden"></div>
+
+    <div id="upload-columns" class="chips hidden"></div>
+
+    <div id="upload-preview" class="table-wrap hidden"></div>
+  </section>
+
+  <!-- 2. HTML EDITOR -->
+  <section id="editor-section">
+    <h2>HTML Editor</h2>
+
+    <div class="field-group">
+      <label for="subject-input">Subject Line</label>
+      <input type="text" id="subject-input" placeholder="e.g. Hello {{.Name}}, welcome!">
+    </div>
+
+    <label>Insert Column</label>
+    <div id="editor-chips" class="chips">
+      <span class="chip" style="color:var(--muted);cursor:default;">Upload a CSV first</span>
+    </div>
+
+    <label for="template-editor">HTML Template</label>
+    <textarea id="template-editor" placeholder="<p>Hello {{.Name}},</p>&#10;<p>Your email is {{.Email}}.</p>"></textarea>
+
+    <div class="button-row">
+      <button class="btn-secondary" id="preview-btn" type="button">Preview</button>
+    </div>
+
+    <iframe id="preview-frame" class="hidden" sandbox></iframe>
+  </section>
+
+  <!-- 3. SEND CONTROLS -->
+  <section id="send-section">
+    <h2>Send Controls</h2>
+    <div id="test-mode-badge" class="badge-test hidden">TEST MODE ACTIVE</div>
+    <button class="btn-primary" id="send-btn" type="button" disabled>Send Bulk Email</button>
+
+    <div id="send-progress" class="hidden">
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div id="send-status" class="status info" style="margin-top:0.5rem;"></div>
+    </div>
+
+    <div id="send-result" class="hidden" style="margin-top:0.75rem;"></div>
+  </section>
+
+  <!-- 4. LOG PANEL -->
+  <section id="log-section">
+    <h2>Log Panel</h2>
+    <div id="log-list"></div>
+
+    <div class="field-group" style="margin-top:0.75rem;">
+      <label for="log-subject-input">Subject to search</label>
+      <input type="text" id="log-subject-input" placeholder="Enter a subject to search logs">
+    </div>
+
+    <div id="log-cooldown" class="status info hidden"></div>
+    <div id="log-warning" class="hidden"></div>
+
+    <div class="button-row">
+      <button class="btn-secondary" id="logs-btn" type="button" disabled>View SendGrid Activity</button>
+    </div>
+    <div id="activity-table" class="table-wrap hidden"></div>
+  </section>
+
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // --- State ---
+  let uploadData = null; // { count, columns, preview, filePath }
+  let isTestMode = false;
+  let lastSentSubject = "";    // populated from /config on load
+  let lastSendTime = null;     // Date object, set when a send completes
+  let cooldownInterval = null; // setInterval ID for countdown
+
+  // --- DOM refs ---
+  const csvFileInput      = document.getElementById("csv-file");
+  const uploadStatus      = document.getElementById("upload-status");
+  const uploadColumns     = document.getElementById("upload-columns");
+  const uploadPreview     = document.getElementById("upload-preview");
+  const editorChips       = document.getElementById("editor-chips");
+  const subjectInput      = document.getElementById("subject-input");
+  const templateEditor    = document.getElementById("template-editor");
+  const previewBtn        = document.getElementById("preview-btn");
+  const previewFrame      = document.getElementById("preview-frame");
+  const testModeBadge     = document.getElementById("test-mode-badge");
+  const sendBtn           = document.getElementById("send-btn");
+  const sendProgress      = document.getElementById("send-progress");
+  const progressFill      = document.getElementById("progress-fill");
+  const sendStatus        = document.getElementById("send-status");
+  const sendResult        = document.getElementById("send-result");
+  const logList           = document.getElementById("log-list");
+  const logsBtn           = document.getElementById("logs-btn");
+  const logSubjectInput   = document.getElementById("log-subject-input");
+  const logCooldown       = document.getElementById("log-cooldown");
+  const logWarning        = document.getElementById("log-warning");
+  const activityTable     = document.getElementById("activity-table");
+
+  // --- Helpers ---
+  function show(el, cls) {
+    el.classList.remove("hidden");
+    if (cls) { el.className = "status " + cls; }
+  }
+
+  function hide(el) { el.classList.add("hidden"); }
+
+  function escapeHTML(str) {
+    const d = document.createElement("div");
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  // --- 0. LOAD CONFIG (test mode + lastSubject) ---
+  (async function loadConfig() {
+    try {
+      const resp = await fetch("/config");
+      const data = await resp.json();
+      isTestMode = data.testMode === true;
+      if (isTestMode) {
+        show(testModeBadge);
+      }
+      lastSentSubject = data.lastSubject || "";
+      if (lastSentSubject) {
+        logSubjectInput.value = lastSentSubject;
+        logsBtn.disabled = false;
+      }
+    } catch (err) {
+      // Config endpoint unavailable — assume normal mode.
+    }
+  })();
+
+  // Enable/disable View Logs button based on subject input content.
+  logSubjectInput.addEventListener("input", function() {
+    if (!lastSendTime || !isCooldownActive()) {
+      logsBtn.disabled = logSubjectInput.value.trim() === "";
+    }
+  });
+
+  // --- 1. CSV UPLOADER ---
+  csvFileInput.addEventListener("change", async function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    hide(uploadColumns);
+    hide(uploadPreview);
+    show(uploadStatus, "info");
+    uploadStatus.textContent = "Uploading...";
+
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      const resp = await fetch("/upload", { method: "POST", body: form });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        show(uploadStatus, "error");
+        uploadStatus.textContent = "Error: " + (data.error || "Upload failed");
+        uploadData = null;
+        sendBtn.disabled = true;
+        return;
+      }
+
+      uploadData = data;
+      show(uploadStatus, "success");
+      uploadStatus.textContent = data.count + " recipients loaded";
+
+      // Column chips
+      uploadColumns.innerHTML = "";
+      data.columns.forEach(function(col) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = col;
+        uploadColumns.appendChild(chip);
+      });
+      show(uploadColumns);
+
+      // Preview table
+      if (data.preview && data.preview.length > 0) {
+        const cols = data.columns;
+        let html = "<table><thead><tr>";
+        cols.forEach(function(c) { html += "<th>" + escapeHTML(c) + "</th>"; });
+        html += "</tr></thead><tbody>";
+        data.preview.forEach(function(row) {
+          html += "<tr>";
+          cols.forEach(function(c) { html += "<td>" + escapeHTML(row[c] || "") + "</td>"; });
+          html += "</tr>";
+        });
+        html += "</tbody></table>";
+        uploadPreview.innerHTML = html;
+        show(uploadPreview);
+      }
+
+      // Update editor chips
+      renderEditorChips(data.columns);
+
+      // Enable send button
+      sendBtn.disabled = false;
+
+    } catch (err) {
+      show(uploadStatus, "error");
+      uploadStatus.textContent = "Network error: " + err.message;
+    }
+  });
+
+  // --- 2. HTML EDITOR ---
+  function renderEditorChips(columns) {
+    editorChips.innerHTML = "";
+    columns.forEach(function(col) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = col;
+      chip.addEventListener("click", function() {
+        insertAtCursor(templateEditor, "{{." + col + "}}");
+      });
+      editorChips.appendChild(chip);
+    });
+  }
+
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = textarea.value.substring(0, start);
+    const after = textarea.value.substring(end);
+    textarea.value = before + text + after;
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+    textarea.focus();
+  }
+
+  // Preview button — render template with first CSV row
+  previewBtn.addEventListener("click", function() {
+    if (!uploadData || !uploadData.preview || uploadData.preview.length === 0) {
+      alert("Upload a CSV first to preview with sample data.");
+      return;
+    }
+
+    let tmpl = templateEditor.value;
+    const sampleRow = uploadData.preview[0];
+
+    // Replace Go template tags {{.Key}} with sample values
+    for (const key in sampleRow) {
+      // Use a regex that matches {{.key}} (case-sensitive on the key)
+      const pattern = new RegExp("\\{\\{\\." + escapeRegex(key) + "\\}\\}", "g");
+      tmpl = tmpl.replace(pattern, escapeHTML(sampleRow[key] || ""));
+    }
+    // Also handle Email and Name mapped from email/name
+    if (sampleRow["email"]) {
+      tmpl = tmpl.replace(/\{\{\.Email\}\}/g, escapeHTML(sampleRow["email"]));
+    }
+    if (sampleRow["name"]) {
+      tmpl = tmpl.replace(/\{\{\.Name\}\}/g, escapeHTML(sampleRow["name"]));
+    }
+
+    previewFrame.srcdoc = tmpl;
+    show(previewFrame);
+  });
+
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // --- 3. SEND CONTROLS ---
+  sendBtn.addEventListener("click", function() {
+    if (!uploadData) {
+      alert("Upload a CSV first.");
+      return;
+    }
+
+    const subject = subjectInput.value.trim();
+    if (!subject) {
+      alert("Enter a subject line.");
+      return;
+    }
+
+    const template = templateEditor.value.trim();
+    if (!template) {
+      alert("Enter an HTML template.");
+      return;
+    }
+
+    sendBtn.disabled = true;
+    logList.innerHTML = "";
+    hide(sendResult);
+    show(sendProgress);
+    progressFill.style.width = "0%";
+    sendStatus.textContent = "Connecting...";
+    sendStatus.className = "status info";
+
+    const body = JSON.stringify({
+      subject: subject,
+      template: template,
+      filePath: uploadData.filePath
+    });
+
+    // Use EventSource-like approach with fetch for POST + SSE
+    fetch("/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body
+    }).then(function(resp) {
+      var ct = resp.headers.get("Content-Type") || "";
+
+      // Error responses are JSON.
+      if (!resp.ok && ct.includes("application/json")) {
+        return resp.json().then(function(data) {
+          throw new Error(data.error || "Send failed");
+        });
+      }
+
+      // Test mode returns a JSON response instead of SSE.
+      if (ct.includes("application/json")) {
+        return resp.json().then(function(data) {
+          progressFill.style.width = "100%";
+          // Synthesise a done event from the JSON response.
+          parseSSE("event: done\ndata: " + JSON.stringify(data));
+          sendBtn.disabled = false;
+        });
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      function pump() {
+        return reader.read().then(function(result) {
+          if (result.done) {
+            sendBtn.disabled = false;
+            return;
+          }
+
+          buffer += decoder.decode(result.value, { stream: true });
+
+          // Parse SSE events from buffer
+          const parts = buffer.split("\n\n");
+          // Keep the last incomplete part in the buffer
+          buffer = parts.pop();
+
+          parts.forEach(function(part) {
+            parseSSE(part);
+          });
+
+          return pump();
+        });
+      }
+
+      return pump();
+    }).catch(function(err) {
+      sendStatus.textContent = "Error: " + err.message;
+      sendStatus.className = "status error";
+      sendBtn.disabled = false;
+    });
+  });
+
+  function parseSSE(raw) {
+    let event = "";
+    let data = "";
+
+    raw.split("\n").forEach(function(line) {
+      if (line.startsWith("event: ")) {
+        event = line.substring(7);
+      } else if (line.startsWith("data: ")) {
+        data = line.substring(6);
+      }
+    });
+
+    if (!event || !data) return;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+    } catch (e) {
+      return;
+    }
+
+    if (event === "batch") {
+      const pct = Math.round((parsed.batch / parsed.total) * 100);
+      progressFill.style.width = pct + "%";
+      sendStatus.textContent = "Batch " + parsed.batch + " of " + parsed.total + "...";
+
+      const entry = document.createElement("div");
+      entry.className = "log-entry " + parsed.status;
+      if (parsed.status === "ok") {
+        entry.textContent = "Batch " + parsed.batch + "/" + parsed.total +
+          " — sent " + parsed.sent + " emails";
+      } else {
+        entry.textContent = "Batch " + parsed.batch + "/" + parsed.total +
+          " — FAILED: " + parsed.error;
+      }
+      logList.appendChild(entry);
+      logList.scrollTop = logList.scrollHeight;
+    }
+
+    if (event === "done") {
+      progressFill.style.width = "100%";
+
+      const totalSent = parsed.totalSent || 0;
+      const totalFailed = parsed.totalFailed || 0;
+
+      const wasTestMode = parsed.testMode === true;
+      let html = "<div class='status " +
+        (totalFailed === 0 ? "success" : (totalSent === 0 ? "error" : "info")) + "'>";
+      if (wasTestMode) {
+        html += "<strong>[TEST MODE]</strong> ";
+      }
+      html += "<strong>Done.</strong> Sent: " + totalSent + " | Failed: " + totalFailed;
+      html += "</div>";
+
+      if (parsed.batchErrors && parsed.batchErrors.length > 0) {
+        html += "<div style='margin-top:0.5rem;font-size:0.82rem;'>";
+        html += "<strong>Batch errors:</strong><ul style='margin:0.25rem 0 0 1.2rem;'>";
+        parsed.batchErrors.forEach(function(be) {
+          html += "<li>Batch " + (be.batchIndex + 1) + ": " + escapeHTML(be.error) + "</li>";
+        });
+        html += "</ul></div>";
+      }
+
+      if (wasTestMode) {
+        const testEntry = document.createElement("div");
+        testEntry.className = "log-entry";
+        testEntry.style.color = "var(--warning)";
+        testEntry.style.fontWeight = "bold";
+        testEntry.textContent = "[TEST MODE] Emails sent only to test addresses";
+        logList.appendChild(testEntry);
+      }
+
+      sendResult.innerHTML = html;
+      show(sendResult);
+      sendStatus.textContent = wasTestMode ? "Test complete" : "Complete";
+      sendStatus.className = "status success";
+      sendBtn.disabled = false;
+
+      // Update log panel state after a send.
+      if (totalSent > 0) {
+        lastSentSubject = subjectInput.value.trim();
+        logSubjectInput.value = lastSentSubject;
+        startCooldown();
+      }
+    }
+  }
+
+  // --- Cooldown helpers ---
+  var COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+  function isCooldownActive() {
+    if (!lastSendTime) return false;
+    return (Date.now() - lastSendTime.getTime()) < COOLDOWN_MS;
+  }
+
+  function startCooldown() {
+    lastSendTime = new Date();
+    logsBtn.disabled = true;
+    logSubjectInput.disabled = true;
+    show(logCooldown, "info");
+
+    if (cooldownInterval) clearInterval(cooldownInterval);
+    cooldownInterval = setInterval(function() {
+      var elapsed = Date.now() - lastSendTime.getTime();
+      var remaining = COOLDOWN_MS - elapsed;
+      if (remaining <= 0) {
+        clearInterval(cooldownInterval);
+        cooldownInterval = null;
+        hide(logCooldown);
+        logSubjectInput.disabled = false;
+        logsBtn.disabled = logSubjectInput.value.trim() === "";
+        return;
+      }
+      var mins = Math.floor(remaining / 60000);
+      var secs = Math.floor((remaining % 60000) / 1000);
+      logCooldown.textContent = "Logs available in " + mins + ":" + (secs < 10 ? "0" : "") + secs;
+    }, 1000);
+  }
+
+  // --- 4. LOG PANEL ---
+  logsBtn.addEventListener("click", async function() {
+    hide(logWarning);
+    var subject = logSubjectInput.value.trim();
+
+    // Empty subject: show inline error, do not fetch.
+    if (!subject) {
+      logWarning.className = "status error";
+      logWarning.textContent = "Enter a subject to search";
+      show(logWarning);
+      return;
+    }
+
+    // Mismatch warning: pause 1.5s so the user can read.
+    if (lastSentSubject && subject.toLowerCase() !== lastSentSubject.toLowerCase()) {
+      logWarning.className = "status info";
+      logWarning.textContent = "This subject differs from your last send (" +
+        lastSentSubject + "). Fetching anyway.";
+      show(logWarning);
+      await new Promise(function(resolve) { setTimeout(resolve, 1500); });
+    }
+
+    logsBtn.disabled = true;
+    logsBtn.textContent = "Loading...";
+
+    try {
+      const resp = await fetch("/logs?subject=" + encodeURIComponent(subject));
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        activityTable.innerHTML =
+          "<div class='status error'>SendGrid logs unavailable</div>";
+        show(activityTable);
+        return;
+      }
+
+      const messages = data.messages || [];
+      if (messages.length === 0) {
+        activityTable.innerHTML =
+          "<div class='status info'>No results found for this subject</div>";
+        show(activityTable);
+        return;
+      }
+
+      let html = "<table><thead><tr>" +
+        "<th>Time Sent</th><th>Recipient</th><th>Status</th><th>Subject</th>" +
+        "</tr></thead><tbody>";
+
+      messages.forEach(function(msg) {
+        const ts = msg.last_event_time || msg.created || "";
+        const to = msg.to_email || "";
+        const status = msg.status || "";
+        const subj = msg.subject || "";
+        html += "<tr>" +
+          "<td>" + escapeHTML(ts) + "</td>" +
+          "<td>" + escapeHTML(to) + "</td>" +
+          "<td>" + escapeHTML(status) + "</td>" +
+          "<td>" + escapeHTML(subj) + "</td>" +
+          "</tr>";
+      });
+
+      html += "</tbody></table>";
+      activityTable.innerHTML = html;
+      show(activityTable);
+
+    } catch (err) {
+      activityTable.innerHTML =
+        "<div class='status error'>SendGrid logs unavailable</div>";
+      show(activityTable);
+    } finally {
+      logsBtn.disabled = isCooldownActive();
+      logsBtn.textContent = "View SendGrid Activity";
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>

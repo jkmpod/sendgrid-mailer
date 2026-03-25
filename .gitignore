@@ -1,0 +1,83 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories (if not using Go modules)
+vendor/
+
+# Go build cache (optional, usually not in repo anyway)
+*.a
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE/editor folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+
+# Binary output directories
+bin/
+dist/
+build/
+
+# Profiling data
+*.prof
+*.pprof
+
+# Debug
+debug/
+
+# Test cache
+*.coverprofile
+
+# Generated files (optional: uncomment if applicable)
+# *.pb.go
+# *.gen.go
+
+# Air (live reload tool)
+.air/
+
+# GoLand IDE specific
+*.iml
+
+# Docker (if applicable)
+docker-compose.override.yml
+
+# Misc
+*.bak
+*.old
+
+# Learning notes
+learning.md
+
+# CLAUDE settings
+.claude
