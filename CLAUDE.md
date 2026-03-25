@@ -1,3 +1,11 @@
+# About the project
+- Project: sendgrid-mailer
+- Language: Go 1.22+
+- Module name: github.com/[your-username]/sendgrid-mailer
+- SendGrid SDK: github.com/sendgrid/sendgrid-go
+- Purpose: A Go web app for sending bulk personalised emails via the SendGrid v3 API.It replaces a Python script and adds a browser-based UI.
+
+## Default Exports
 [go doc -all output for config, mailer, server/handlers]
 
 package config // import "github.com/jkmpod/sendgrid-mailer/config"
@@ -123,7 +131,7 @@ func SetLastColumns(cols []string)
 func SetLastFilePath(path string)
     SetLastFilePath stores the file path from the most recent CSV upload.
 
-[Ground Rules]
+## Ground Rules
 Ground rules for this session:
 1. Implement one package at a time — do not jump ahead to the next package
 2. Prefer simple, readable Go over clever abstractions — I am a Go learner
