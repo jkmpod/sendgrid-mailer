@@ -14,6 +14,7 @@ func HandleConfig(cfg *config.Config) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"testMode":    cfg.TestMode,
 			"lastSubject": GetLastSubject(),
+			"sendLog":     GetSendLog(),
 		})
 	}
 }

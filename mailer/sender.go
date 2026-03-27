@@ -3,6 +3,7 @@ package mailer
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jkmpod/sendgrid-mailer/models"
@@ -39,8 +40,11 @@ func (e *Emailer) SendBatch(
 
 	resp, err := e.client.Send(msg)
 	if err != nil {
+		log.Printf("[mailer] SendBatch: API request failed: %v", err)
 		return nil, fmt.Errorf("SendGrid API request failed: %w", err)
 	}
+
+	log.Printf("[mailer] SendBatch: status=%d recipients=%d", resp.StatusCode, len(recipients))
 
 	result := make(map[string]interface{})
 	result["status_code"] = resp.StatusCode
@@ -56,6 +60,7 @@ func (e *Emailer) SendBatch(
 	}
 
 	if resp.StatusCode >= 400 {
+		log.Printf("[mailer] SendBatch: ERROR status=%d body=%s", resp.StatusCode, resp.Body)
 		return result, fmt.Errorf("SendGrid returned status %d", resp.StatusCode)
 	}
 
@@ -86,15 +91,18 @@ func (e *Emailer) SendTest(
 	}
 
 	testSubject := "[TEST] " + subject
+	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
 
 	_, err := e.SendBatch(recipients, testSubject, htmlTemplate)
 	if err != nil {
+		log.Printf("[mailer] SendTest: failed: %v", err)
 		return SendResult{
 			TotalFailed: len(recipients),
 			BatchErrors: []BatchError{{BatchIndex: 0, Err: err}},
 		}, nil
 	}
 
+	log.Printf("[mailer] SendTest: success, sent=%d", len(recipients))
 	return SendResult{TotalSent: len(recipients)}, nil
 }
 
@@ -109,6 +117,7 @@ func (e *Emailer) SendBulk(
 	htmlTemplate string,
 ) (SendResult, error) {
 	chunks := ChunkRecipients(recipients, e.MaxBatchSize)
+	log.Printf("[mailer] SendBulk: starting send to %d recipients in %d batches", len(recipients), len(chunks))
 
 	var sr SendResult
 
@@ -124,11 +133,14 @@ func (e *Emailer) SendBulk(
 				BatchIndex: i,
 				Err:        err,
 			})
+			log.Printf("[mailer] SendBulk: batch %d/%d failed: %v", i+1, len(chunks), err)
 			continue
 		}
 
 		sr.TotalSent += len(chunk)
+		log.Printf("[mailer] SendBulk: batch %d/%d ok, sent=%d", i+1, len(chunks), len(chunk))
 	}
 
+	log.Printf("[mailer] SendBulk: complete, totalSent=%d totalFailed=%d", sr.TotalSent, sr.TotalFailed)
 	return sr, nil
 }

@@ -50,6 +50,7 @@ func TestHandleConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			SetLastSubject(tt.setSubject)
+			ResetSendLog()
 
 			cfg := &config.Config{
 				TestMode: tt.testMode,
@@ -84,6 +85,57 @@ func TestHandleConfig(t *testing.T) {
 			if gotSubject != tt.wantLastSubject {
 				t.Errorf("lastSubject = %q, want %q", gotSubject, tt.wantLastSubject)
 			}
+
+			// sendLog should always be present as an array.
+			gotLog, ok := resp["sendLog"].([]interface{})
+			if !ok {
+				t.Fatalf("expected sendLog array in response, got: %v", resp["sendLog"])
+			}
+			if len(gotLog) != 0 {
+				t.Errorf("sendLog len = %d, want 0 (reset before each case)", len(gotLog))
+			}
 		})
+	}
+}
+
+func TestHandleConfig_WithSendLog(t *testing.T) {
+	ResetSendLog()
+	SetLastSubject("")
+
+	AppendSendLog(SendLogEntry{
+		Subject:     "Test Email",
+		TotalSent:   3,
+		TotalFailed: 0,
+		TestMode:    false,
+	})
+
+	cfg := &config.Config{}
+	handler := HandleConfig(cfg)
+	req := httptest.NewRequest("GET", "/config", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	gotLog, ok := resp["sendLog"].([]interface{})
+	if !ok {
+		t.Fatalf("expected sendLog array, got: %v", resp["sendLog"])
+	}
+	if len(gotLog) != 1 {
+		t.Fatalf("sendLog len = %d, want 1", len(gotLog))
+	}
+
+	entry, ok := gotLog[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sendLog entry to be object, got: %v", gotLog[0])
+	}
+	if entry["subject"] != "Test Email" {
+		t.Errorf("entry.subject = %q, want %q", entry["subject"], "Test Email")
+	}
+	if int(entry["totalSent"].(float64)) != 3 {
+		t.Errorf("entry.totalSent = %v, want 3", entry["totalSent"])
 	}
 }

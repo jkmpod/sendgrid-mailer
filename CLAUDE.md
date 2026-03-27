@@ -6,7 +6,7 @@
 - Purpose: A Go web app for sending bulk personalised emails via the SendGrid v3 API.It replaces a Python script and adds a browser-based UI.
 
 ## Default Exports
-[go doc -all output for config, mailer, server/handlers]
+[go doc -all output for all packages]
 
 package config // import "github.com/jkmpod/sendgrid-mailer/config"
 
@@ -19,6 +19,9 @@ type Config struct {
         FromName     string
         MaxBatchSize int
         RateDelayMS  int
+        TestMode     bool
+        TestEmails   []string
+        Port         string
 }
     Config holds all application configuration read from environment variables.
 
@@ -26,6 +29,32 @@ func Load() (*Config, error)
     Load reads configuration from environment variables and returns a populated
     Config pointer. It returns an error if any required variable is missing or
     if an integer variable contains a non-numeric value.
+
+package models // import "github.com/jkmpod/sendgrid-mailer/models"
+
+
+TYPES
+
+type EmailRecipient struct {
+        Email        string
+        Name         string
+        CustomFields map[string]string
+}
+    EmailRecipient represents a single email recipient loaded from a CSV file.
+    It carries the recipient's address, display name, and any extra columns as
+    key-value pairs for template substitution.
+
+package loader // import "github.com/jkmpod/sendgrid-mailer/loader"
+
+
+FUNCTIONS
+
+func LoadFromCSV(filePath string) ([]models.EmailRecipient, error)
+    LoadFromCSV reads a CSV file and returns a slice of EmailRecipient values.
+    The first row is treated as a header. The "email" and "name" columns
+    (case-insensitive) map to the struct fields; all other columns become
+    entries in CustomFields. Rows with an empty email are skipped with a
+    warning.
 
 package mailer // import "github.com/jkmpod/sendgrid-mailer/mailer"
 
@@ -90,6 +119,17 @@ func (e *Emailer) SendBulk(
     something systemic fails (e.g. the template is unparseable). A time.Sleep of
     RateDelayMS milliseconds is inserted between batches.
 
+func (e *Emailer) SendTest(
+        testEmails []string,
+        subject string,
+        htmlTemplate string,
+        firstRecipient models.EmailRecipient,
+) (SendResult, error)
+    SendTest sends a test email to each address in testEmails, personalised
+    using data from firstRecipient (as if each test address were that person).
+    The subject is prefixed with "[TEST] ". No chunking is needed — all test
+    emails are sent as a single batch.
+
 type SendResult struct {
         TotalSent   int
         TotalFailed int
@@ -98,26 +138,57 @@ type SendResult struct {
     SendResult summarises the outcome of a bulk send operation. Partial success
     is expected — check BatchErrors for per-batch details.
 
+package server // import "github.com/jkmpod/sendgrid-mailer/server"
+
+
+TYPES
+
+type Server struct {
+        // Has unexported fields.
+}
+    Server holds the application dependencies and the HTTP route multiplexer.
+
+func NewServer(cfg *config.Config) *Server
+    NewServer creates a Server and wires up all HTTP routes.
+
+func (s *Server) Start(addr string) error
+    Start begins listening for HTTP requests on the given address.
+
 package handlers // import "github.com/jkmpod/sendgrid-mailer/server/handlers"
 
 
 FUNCTIONS
+
+func AppendSendLog(entry SendLogEntry)
+    AppendSendLog adds an entry to the in-memory send log. The log is capped at
+    50 entries — oldest entries are dropped first.
+
+func GetLastSubject() string
+    GetLastSubject returns the subject line of the most recent successful send.
+    It returns an empty string if no send has happened yet.
 
 func HandleCompose(w http.ResponseWriter, r *http.Request)
     HandleCompose returns the column names and file path from the most
     recent CSV upload. This is a helper endpoint for the template editor — no
     persistence is needed.
 
+func HandleConfig(cfg *config.Config) http.HandlerFunc
+    HandleConfig returns an http.HandlerFunc that responds with a JSON object
+    containing the current test mode status. The UI uses this on page load to
+    show or hide the "TEST MODE ACTIVE" badge.
+
 func HandleLogs(apiKey string) http.HandlerFunc
     HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
-    API to fetch the last 50 message events and returns the raw JSON response to
-    the client.
+    API to fetch the last 50 message events and returns the raw JSON response
+    to the client. If a ?subject= query param is provided, it is passed to the
+    SendGrid API as a query filter.
 
-func HandleSend(e *mailer.Emailer) http.HandlerFunc
+func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
     HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
     recipients from a CSV, and sends email in batches. Progress is streamed to
     the client using Server-Sent Events (text/event-stream) so the log panel
-    updates in real time.
+    updates in real time. When cfg.TestMode is true, emails are sent only to
+    cfg.TestEmails using the first CSV row for personalisation.
 
 func HandleUpload(w http.ResponseWriter, r *http.Request)
     HandleUpload accepts a multipart/form-data POST with a CSV file field
@@ -125,11 +196,34 @@ func HandleUpload(w http.ResponseWriter, r *http.Request)
     loader.LoadFromCSV, and returns JSON with the recipient count, column names,
     and a preview of the first 3 rows.
 
+func ResetSendLog()
+    ResetSendLog clears the in-memory send log. Used by tests.
+
 func SetLastColumns(cols []string)
     SetLastColumns stores the column names from the most recent CSV upload.
 
 func SetLastFilePath(path string)
     SetLastFilePath stores the file path from the most recent CSV upload.
+
+func SetLastSubject(s string)
+    SetLastSubject stores the subject line of the most recent successful send.
+
+
+TYPES
+
+type SendLogEntry struct {
+        Time        time.Time `json:"time"`
+        Subject     string    `json:"subject"`
+        TotalSent   int       `json:"totalSent"`
+        TotalFailed int       `json:"totalFailed"`
+        TestMode    bool      `json:"testMode"`
+}
+    SendLogEntry records the outcome of a single send operation. Stored in
+    memory only — lost on restart.
+
+func GetSendLog() []SendLogEntry
+    GetSendLog returns a copy of the in-memory send log. Returns an empty slice
+    (not nil) if no sends have occurred.
 
 ## Ground Rules
 Ground rules for this session:

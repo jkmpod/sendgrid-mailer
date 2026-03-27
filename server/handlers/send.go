@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -52,13 +53,17 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
+		log.Printf("[send] request: subject=%q file=%q testMode=%v", req.Subject, req.FilePath, cfg.TestMode)
+
 		recipients, err := loader.LoadFromCSV(req.FilePath)
 		if err != nil {
+			log.Printf("[send] CSV load failed: %v", err)
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": fmt.Sprintf("failed to load CSV: %v", err),
 			})
 			return
 		}
+		log.Printf("[send] loaded %d recipients from CSV", len(recipients))
 
 		// Test mode: send only to test emails using the first CSV row.
 		if cfg.TestMode {
@@ -70,12 +75,21 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			}
 			result, err := e.SendTest(cfg.TestEmails, req.Subject, req.Template, recipients[0])
 			if err != nil {
+				log.Printf("[send] SendTest error: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
 					"error": err.Error(),
 				})
 				return
 			}
+			log.Printf("[send] test complete: sent=%d failed=%d", result.TotalSent, result.TotalFailed)
 			SetLastSubject(req.Subject)
+			AppendSendLog(SendLogEntry{
+				Time:        time.Now(),
+				Subject:     "[TEST] " + req.Subject,
+				TotalSent:   result.TotalSent,
+				TotalFailed: result.TotalFailed,
+				TestMode:    true,
+			})
 			resp := sendResultToJSON(result)
 			resp["testMode"] = true
 			writeJSON(w, http.StatusOK, resp)
@@ -96,6 +110,13 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			if result.TotalSent > 0 {
 				SetLastSubject(req.Subject)
 			}
+			AppendSendLog(SendLogEntry{
+				Time:        time.Now(),
+				Subject:     req.Subject,
+				TotalSent:   result.TotalSent,
+				TotalFailed: result.TotalFailed,
+				TestMode:    false,
+			})
 			resp := sendResultToJSON(result)
 			resp["testMode"] = false
 			writeJSON(w, http.StatusOK, resp)
@@ -144,9 +165,18 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			flusher.Flush()
 		}
 
+		log.Printf("[send] complete: totalSent=%d totalFailed=%d", totalSent, totalFailed)
+
 		if totalSent > 0 {
 			SetLastSubject(req.Subject)
 		}
+		AppendSendLog(SendLogEntry{
+			Time:        time.Now(),
+			Subject:     req.Subject,
+			TotalSent:   totalSent,
+			TotalFailed: totalFailed,
+			TestMode:    false,
+		})
 
 		// Send the final summary event.
 		sseEvent(w, "done", map[string]interface{}{
