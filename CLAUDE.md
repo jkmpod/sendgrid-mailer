@@ -230,9 +230,10 @@ func HandleLogs(apiKey string) http.HandlerFunc
     HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
     API and returns the raw JSON response to the client. It accepts optional
     query parameters to filter results: ?limit=N (default 50, max 1000),
-    ?subject=..., ?status=... (validated against known SendGrid statuses),
-    ?to_email=..., ?from_date=... and ?to_date=... (ISO 8601 timestamps).
-    Multiple filters are combined with AND.
+    ?subject=..., ?status=... (validated against allowlist: delivered,
+    not_delivered, processing — SendGrid rejects granular event types like
+    bounced/blocked/deferred), ?to_email=..., ?from_date=... and ?to_date=...
+    (ISO 8601 timestamps). Multiple filters are combined with AND.
 
 func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
     HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
@@ -339,7 +340,7 @@ func GetSendLog() []SendLogEntry
 ```
 ?limit=200                           — results per request (default 50, max 1000)
 ?subject=Welcome                     — filter by subject line
-?status=bounced                      — filter by delivery status (delivered, not_delivered, bounced, blocked, deferred, processing, spam_reported)
+?status=not_delivered                — filter by delivery status (delivered, not_delivered, processing only)
 ?to_email=user@example.com           — filter by recipient email
 ?from_date=2026-03-01T00:00:00Z      — start of date range (requires to_date)
 ?to_date=2026-03-28T23:59:59Z        — end of date range (requires from_date)
