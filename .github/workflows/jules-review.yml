@@ -2,7 +2,7 @@ name: Jules AI Reviewer
 
 on:
   pull_request:
-    types: [opened, synchronized]
+    types: [opened, synchronized, reopened]
 
 jobs:
   jules-review:
