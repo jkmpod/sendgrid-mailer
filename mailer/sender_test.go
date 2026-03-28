@@ -97,7 +97,7 @@ func TestSendBulk(t *testing.T) {
 			e := newTestEmailer(server.URL, tt.batchSize)
 			recipients := makeRecipients(tt.recipientCount)
 
-			result, err := e.SendBulk(recipients, "Test Subject", simpleTemplate)
+			result, err := e.SendBulk(recipients, "Test Subject", simpleTemplate, nil, nil)
 			if err != nil {
 				t.Fatalf("unexpected top-level error: %v", err)
 			}
@@ -185,7 +185,7 @@ func TestSendTest(t *testing.T) {
 
 			e := newTestEmailer(server.URL, 1000)
 
-			result, err := e.SendTest(tt.testEmails, "Hello", "<p>Hi {{.Name}}</p>", firstRecipient)
+			result, err := e.SendTest(tt.testEmails, "Hello", "<p>Hi {{.Name}}</p>", firstRecipient, nil, nil)
 
 			if tt.wantTopErr != "" {
 				if err == nil {
@@ -227,7 +227,7 @@ func TestSendTest_SubjectPrefix(t *testing.T) {
 		Name:  "Alice",
 	}
 
-	_, err := e.SendTest([]string{"tester@x.com"}, "Welcome", "<p>Hi</p>", firstRecipient)
+	_, err := e.SendTest([]string{"tester@x.com"}, "Welcome", "<p>Hi</p>", firstRecipient, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestSendTest_OnlyTestRecipients(t *testing.T) {
 		CustomFields: map[string]string{"company": "Acme"},
 	}
 
-	_, err := e.SendTest([]string{"tester@x.com"}, "Hi", "<p>Hello</p>", firstRecipient)
+	_, err := e.SendTest([]string{"tester@x.com"}, "Hi", "<p>Hello</p>", firstRecipient, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

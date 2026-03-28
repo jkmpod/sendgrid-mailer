@@ -18,6 +18,8 @@ func BuildMail(
 	subject string,
 	htmlTemplate string,
 	recipients []models.EmailRecipient,
+	cc []string,
+	bcc []string,
 ) (*mail.SGMailV3, error) {
 	tmpl, err := template.New("email").Parse(htmlTemplate)
 	if err != nil {
@@ -43,6 +45,12 @@ func BuildMail(
 
 		p := mail.NewPersonalization()
 		p.AddTos(mail.NewEmail(r.Name, r.Email))
+		for _, addr := range cc {
+			p.AddCCs(mail.NewEmail("", addr))
+		}
+		for _, addr := range bcc {
+			p.AddBCCs(mail.NewEmail("", addr))
+		}
 		m.AddPersonalizations(p)
 
 		// Each recipient gets their own rendered HTML; we store it as content

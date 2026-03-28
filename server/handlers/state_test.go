@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
 func TestSetGetLastSubject(t *testing.T) {
@@ -140,4 +142,71 @@ func TestSetGetLastSubject_Concurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestRuntimeConfig(t *testing.T) {
+	cfg := &config.Config{
+		TestMode:  true,
+		TestEmails: []string{"default@example.com"},
+		FromEmail: "default@example.com",
+		FromName:  "Default Sender",
+	}
+
+	t.Run("defaults when no override set", func(t *testing.T) {
+		ResetRuntimeConfig()
+		if got := EffectiveTestMode(cfg); got != true {
+			t.Errorf("EffectiveTestMode = %v, want true", got)
+		}
+		if got := EffectiveTestEmails(cfg); len(got) != 1 || got[0] != "default@example.com" {
+			t.Errorf("EffectiveTestEmails = %v, want [default@example.com]", got)
+		}
+		if got := EffectiveFromEmail(cfg); got != "default@example.com" {
+			t.Errorf("EffectiveFromEmail = %q, want %q", got, "default@example.com")
+		}
+		if got := EffectiveFromName(cfg); got != "Default Sender" {
+			t.Errorf("EffectiveFromName = %q, want %q", got, "Default Sender")
+		}
+	})
+
+	t.Run("overrides take precedence", func(t *testing.T) {
+		ResetRuntimeConfig()
+		SetRuntimeTestMode(false)
+		SetRuntimeTestEmails([]string{"override@x.com"})
+		SetRuntimeFromEmail("override@x.com")
+		SetRuntimeFromName("Override Sender")
+
+		if got := EffectiveTestMode(cfg); got != false {
+			t.Errorf("EffectiveTestMode = %v, want false", got)
+		}
+		if got := EffectiveTestEmails(cfg); len(got) != 1 || got[0] != "override@x.com" {
+			t.Errorf("EffectiveTestEmails = %v, want [override@x.com]", got)
+		}
+		if got := EffectiveFromEmail(cfg); got != "override@x.com" {
+			t.Errorf("EffectiveFromEmail = %q, want %q", got, "override@x.com")
+		}
+		if got := EffectiveFromName(cfg); got != "Override Sender" {
+			t.Errorf("EffectiveFromName = %q, want %q", got, "Override Sender")
+		}
+	})
+
+	t.Run("reset clears all overrides", func(t *testing.T) {
+		SetRuntimeTestMode(false)
+		SetRuntimeTestEmails([]string{"x@x.com"})
+		SetRuntimeFromEmail("x@x.com")
+		SetRuntimeFromName("X")
+		ResetRuntimeConfig()
+
+		if got := GetRuntimeTestMode(); got != nil {
+			t.Errorf("GetRuntimeTestMode = %v, want nil", got)
+		}
+		if got := GetRuntimeTestEmails(); got != nil {
+			t.Errorf("GetRuntimeTestEmails = %v, want nil", got)
+		}
+		if got := GetRuntimeFromEmail(); got != "" {
+			t.Errorf("GetRuntimeFromEmail = %q, want empty", got)
+		}
+		if got := GetRuntimeFromName(); got != "" {
+			t.Errorf("GetRuntimeFromName = %q, want empty", got)
+		}
+	})
 }

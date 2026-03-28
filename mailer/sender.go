@@ -30,10 +30,13 @@ func (e *Emailer) SendBatch(
 	recipients []models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
+	cc []string,
+	bcc []string,
 ) (map[string]interface{}, error) {
-	from := mail.NewEmail(e.fromName, e.fromEmail)
+	fromEmail, fromName := e.GetFrom()
+	from := mail.NewEmail(fromName, fromEmail)
 
-	msg, err := BuildMail(from, subject, htmlTemplate, recipients)
+	msg, err := BuildMail(from, subject, htmlTemplate, recipients, cc, bcc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
@@ -76,6 +79,8 @@ func (e *Emailer) SendTest(
 	subject string,
 	htmlTemplate string,
 	firstRecipient models.EmailRecipient,
+	cc []string,
+	bcc []string,
 ) (SendResult, error) {
 	if len(testEmails) == 0 {
 		return SendResult{}, fmt.Errorf("testEmails must not be empty")
@@ -93,7 +98,7 @@ func (e *Emailer) SendTest(
 	testSubject := "[TEST] " + subject
 	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
 
-	_, err := e.SendBatch(recipients, testSubject, htmlTemplate)
+	_, err := e.SendBatch(recipients, testSubject, htmlTemplate, cc, bcc)
 	if err != nil {
 		log.Printf("[mailer] SendTest: failed: %v", err)
 		return SendResult{
@@ -115,6 +120,8 @@ func (e *Emailer) SendBulk(
 	recipients []models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
+	cc []string,
+	bcc []string,
 ) (SendResult, error) {
 	chunks := ChunkRecipients(recipients, e.MaxBatchSize)
 	log.Printf("[mailer] SendBulk: starting send to %d recipients in %d batches", len(recipients), len(chunks))
@@ -126,7 +133,7 @@ func (e *Emailer) SendBulk(
 			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
-		_, err := e.SendBatch(chunk, subject, htmlTemplate)
+		_, err := e.SendBatch(chunk, subject, htmlTemplate, cc, bcc)
 		if err != nil {
 			sr.TotalFailed += len(chunk)
 			sr.BatchErrors = append(sr.BatchErrors, BatchError{

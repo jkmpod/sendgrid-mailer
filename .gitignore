@@ -55,6 +55,7 @@ build/
 
 # Debug
 debug/
+test.log
 
 # Test cache
 *.coverprofile
@@ -78,6 +79,8 @@ docker-compose.override.yml
 
 # Learning notes
 learning.md
+session-tracker.md
 
 # CLAUDE settings
 .claude/
+

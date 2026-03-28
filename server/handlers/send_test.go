@@ -76,9 +76,11 @@ func TestHandleSend(t *testing.T) {
 		FromName:     "Test",
 		MaxBatchSize: 1000,
 		RateDelayMS:  0,
+		TestMode:     false,
 	}
 	e := mailer.NewEmailer(cfg)
 	handler := HandleSend(e, cfg)
+	ResetRuntimeConfig()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

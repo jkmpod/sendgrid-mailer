@@ -300,8 +300,42 @@
   <!-- 3. SEND CONTROLS -->
   <section id="send-section">
     <h2>Send Controls</h2>
-    <div id="test-mode-badge" class="badge-test hidden">TEST MODE ACTIVE</div>
-    <button class="btn-primary" id="send-btn" type="button" disabled>Send Bulk Email</button>
+
+    <!-- Test Mode toggle -->
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+      <div id="test-mode-badge" class="badge-test hidden">TEST MODE ACTIVE</div>
+      <button class="btn-secondary" id="test-mode-toggle" type="button">Switch to Bulk Mode</button>
+    </div>
+
+    <!-- Test Emails (visible only in test mode) -->
+    <div class="field-group" id="test-emails-group" style="display:none;">
+      <label for="test-emails-input">Test Email Addresses (comma-separated)</label>
+      <input type="text" id="test-emails-input" placeholder="test1@example.com, test2@example.com">
+      <button class="btn-secondary" id="save-test-emails" type="button" style="margin-top:0.25rem;">Save Test Emails</button>
+    </div>
+
+    <!-- From Address / Name -->
+    <div class="field-group">
+      <label for="from-email-input">From Email</label>
+      <input type="text" id="from-email-input" placeholder="sender@example.com">
+    </div>
+    <div class="field-group">
+      <label for="from-name-input">From Name</label>
+      <input type="text" id="from-name-input" placeholder="Sender Name">
+    </div>
+    <button class="btn-secondary" id="save-from" type="button" style="margin-bottom:0.75rem;">Save From Address</button>
+
+    <!-- CC / BCC -->
+    <div class="field-group">
+      <label for="cc-input">CC (comma-separated)</label>
+      <input type="text" id="cc-input" placeholder="cc1@example.com, cc2@example.com">
+    </div>
+    <div class="field-group">
+      <label for="bcc-input">BCC (comma-separated)</label>
+      <input type="text" id="bcc-input" placeholder="bcc1@example.com">
+    </div>
+
+    <button class="btn-primary" id="send-btn" type="button" disabled>Send Email</button>
 
     <div id="send-progress" class="hidden">
       <div class="progress-bar">
@@ -356,6 +390,15 @@
   const previewBtn        = document.getElementById("preview-btn");
   const previewFrame      = document.getElementById("preview-frame");
   const testModeBadge     = document.getElementById("test-mode-badge");
+  const testModeToggle    = document.getElementById("test-mode-toggle");
+  const testEmailsGroup   = document.getElementById("test-emails-group");
+  const testEmailsInput   = document.getElementById("test-emails-input");
+  const saveTestEmails    = document.getElementById("save-test-emails");
+  const fromEmailInput    = document.getElementById("from-email-input");
+  const fromNameInput     = document.getElementById("from-name-input");
+  const saveFromBtn       = document.getElementById("save-from");
+  const ccInput           = document.getElementById("cc-input");
+  const bccInput          = document.getElementById("bcc-input");
   const sendBtn           = document.getElementById("send-btn");
   const sendProgress      = document.getElementById("send-progress");
   const progressFill      = document.getElementById("progress-fill");
@@ -382,24 +425,95 @@
     return d.innerHTML;
   }
 
-  // --- 0. LOAD CONFIG (test mode + lastSubject) ---
+  // --- UI state sync ---
+  function updateTestModeUI() {
+    if (isTestMode) {
+      show(testModeBadge);
+      testModeToggle.textContent = "Switch to Bulk Mode";
+      testEmailsGroup.style.display = "";
+      sendBtn.textContent = "Send Test Email";
+    } else {
+      hide(testModeBadge);
+      testModeToggle.textContent = "Switch to Test Mode";
+      testEmailsGroup.style.display = "none";
+      sendBtn.textContent = "Send Bulk Email";
+    }
+  }
+
+  // --- 0. LOAD CONFIG ---
   (async function loadConfig() {
     try {
       const resp = await fetch("/config");
       const data = await resp.json();
       isTestMode = data.testMode === true;
-      if (isTestMode) {
-        show(testModeBadge);
+      updateTestModeUI();
+
+      // Populate settings from server state.
+      if (data.testEmails && data.testEmails.length > 0) {
+        testEmailsInput.value = data.testEmails.join(", ");
       }
+      if (data.fromEmail) fromEmailInput.value = data.fromEmail;
+      if (data.fromName) fromNameInput.value = data.fromName;
+
       lastSentSubject = data.lastSubject || "";
       if (lastSentSubject) {
         logSubjectInput.value = lastSentSubject;
         logsBtn.disabled = false;
       }
     } catch (err) {
-      // Config endpoint unavailable — assume normal mode.
+      // Config endpoint unavailable — assume test mode.
+      isTestMode = true;
+      updateTestModeUI();
     }
   })();
+
+  // --- Test Mode Toggle ---
+  testModeToggle.addEventListener("click", async function() {
+    isTestMode = !isTestMode;
+    updateTestModeUI();
+    try {
+      await fetch("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testMode: isTestMode })
+      });
+    } catch (err) {
+      // Revert on failure.
+      isTestMode = !isTestMode;
+      updateTestModeUI();
+    }
+  });
+
+  // --- Save Test Emails ---
+  saveTestEmails.addEventListener("click", async function() {
+    var emails = testEmailsInput.value.split(",").map(function(s) {
+      return s.trim();
+    }).filter(Boolean);
+    try {
+      const resp = await fetch("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testEmails: emails })
+      });
+      if (resp.ok) saveTestEmails.textContent = "Saved!";
+      setTimeout(function() { saveTestEmails.textContent = "Save Test Emails"; }, 1500);
+    } catch (err) { /* ignore */ }
+  });
+
+  // --- Save From Address ---
+  saveFromBtn.addEventListener("click", async function() {
+    var email = fromEmailInput.value.trim();
+    var name = fromNameInput.value.trim();
+    try {
+      const resp = await fetch("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromEmail: email, fromName: name })
+      });
+      if (resp.ok) saveFromBtn.textContent = "Saved!";
+      setTimeout(function() { saveFromBtn.textContent = "Save From Address"; }, 1500);
+    } catch (err) { /* ignore */ }
+  });
 
   // Enable/disable View Logs button based on subject input content.
   logSubjectInput.addEventListener("input", function() {
@@ -558,10 +672,15 @@
     sendStatus.textContent = "Connecting...";
     sendStatus.className = "status info";
 
+    var cc = ccInput.value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    var bcc = bccInput.value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+
     const body = JSON.stringify({
       subject: subject,
       template: template,
-      filePath: uploadData.filePath
+      filePath: uploadData.filePath,
+      cc: cc.length > 0 ? cc : undefined,
+      bcc: bcc.length > 0 ? bcc : undefined
     });
 
     // Use EventSource-like approach with fetch for POST + SSE

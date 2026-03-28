@@ -3,6 +3,8 @@ package handlers
 import (
 	"sync"
 	"time"
+
+	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
 // subjectMu guards lastSubject and sendLog. A mutex is needed because HTTP
@@ -13,6 +15,13 @@ var (
 	subjectMu   sync.Mutex
 	lastSubject string
 	sendLog     []SendLogEntry
+
+	// Runtime config overrides — nil/empty means "use Config default".
+	// Set via POST /config, reset on app restart.
+	runtimeTestMode   *bool
+	runtimeTestEmails []string
+	runtimeFromEmail  string
+	runtimeFromName   string
 )
 
 // SendLogEntry records the outcome of a single send operation.
@@ -66,4 +75,115 @@ func ResetSendLog() {
 	subjectMu.Lock()
 	defer subjectMu.Unlock()
 	sendLog = nil
+}
+
+// --- Runtime config overrides ---
+
+// SetRuntimeTestMode overrides the test mode setting from config.
+func SetRuntimeTestMode(v bool) {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	runtimeTestMode = &v
+}
+
+// GetRuntimeTestMode returns the override value, or nil if not set.
+func GetRuntimeTestMode() *bool {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	return runtimeTestMode
+}
+
+// SetRuntimeTestEmails overrides the test email list from config.
+func SetRuntimeTestEmails(v []string) {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	runtimeTestEmails = v
+}
+
+// GetRuntimeTestEmails returns the override value, or nil if not set.
+func GetRuntimeTestEmails() []string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	return runtimeTestEmails
+}
+
+// SetRuntimeFromEmail overrides the sender email from config.
+func SetRuntimeFromEmail(v string) {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	runtimeFromEmail = v
+}
+
+// GetRuntimeFromEmail returns the override value, or "" if not set.
+func GetRuntimeFromEmail() string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	return runtimeFromEmail
+}
+
+// SetRuntimeFromName overrides the sender name from config.
+func SetRuntimeFromName(v string) {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	runtimeFromName = v
+}
+
+// GetRuntimeFromName returns the override value, or "" if not set.
+func GetRuntimeFromName() string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	return runtimeFromName
+}
+
+// ResetRuntimeConfig clears all runtime overrides. Used by tests.
+func ResetRuntimeConfig() {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	runtimeTestMode = nil
+	runtimeTestEmails = nil
+	runtimeFromEmail = ""
+	runtimeFromName = ""
+}
+
+// --- Effective value resolution ---
+// These return the runtime override if set, otherwise the Config default.
+
+// EffectiveTestMode returns the runtime override if set, else cfg.TestMode.
+func EffectiveTestMode(cfg *config.Config) bool {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	if runtimeTestMode != nil {
+		return *runtimeTestMode
+	}
+	return cfg.TestMode
+}
+
+// EffectiveTestEmails returns the runtime override if set, else cfg.TestEmails.
+func EffectiveTestEmails(cfg *config.Config) []string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	if runtimeTestEmails != nil {
+		return runtimeTestEmails
+	}
+	return cfg.TestEmails
+}
+
+// EffectiveFromEmail returns the runtime override if non-empty, else cfg.FromEmail.
+func EffectiveFromEmail(cfg *config.Config) string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	if runtimeFromEmail != "" {
+		return runtimeFromEmail
+	}
+	return cfg.FromEmail
+}
+
+// EffectiveFromName returns the runtime override if non-empty, else cfg.FromName.
+func EffectiveFromName(cfg *config.Config) string {
+	subjectMu.Lock()
+	defer subjectMu.Unlock()
+	if runtimeFromName != "" {
+		return runtimeFromName
+	}
+	return cfg.FromName
 }

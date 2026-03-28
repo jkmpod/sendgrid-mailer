@@ -14,9 +14,11 @@ import (
 
 // sendRequest is the expected JSON body for the /send endpoint.
 type sendRequest struct {
-	Subject  string `json:"subject"`
-	Template string `json:"template"`
-	FilePath string `json:"filePath"`
+	Subject  string   `json:"subject"`
+	Template string   `json:"template"`
+	FilePath string   `json:"filePath"`
+	CC       []string `json:"cc"`
+	BCC      []string `json:"bcc"`
 }
 
 // HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
@@ -53,7 +55,8 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("[send] request: subject=%q file=%q testMode=%v", req.Subject, req.FilePath, cfg.TestMode)
+		testMode := EffectiveTestMode(cfg)
+		log.Printf("[send] request: subject=%q file=%q testMode=%v", req.Subject, req.FilePath, testMode)
 
 		recipients, err := loader.LoadFromCSV(req.FilePath)
 		if err != nil {
@@ -66,14 +69,21 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		log.Printf("[send] loaded %d recipients from CSV", len(recipients))
 
 		// Test mode: send only to test emails using the first CSV row.
-		if cfg.TestMode {
+		if testMode {
+			testEmails := EffectiveTestEmails(cfg)
 			if len(recipients) == 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{
 					"error": "CSV has no recipients to use as test data",
 				})
 				return
 			}
-			result, err := e.SendTest(cfg.TestEmails, req.Subject, req.Template, recipients[0])
+			if len(testEmails) == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": "no test email addresses configured — add them in Settings",
+				})
+				return
+			}
+			result, err := e.SendTest(testEmails, req.Subject, req.Template, recipients[0], req.CC, req.BCC)
 			if err != nil {
 				log.Printf("[send] SendTest error: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -100,7 +110,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			// Fallback: if flushing isn't supported, do a normal JSON response.
-			result, err := e.SendBulk(recipients, req.Subject, req.Template)
+			result, err := e.SendBulk(recipients, req.Subject, req.Template, req.CC, req.BCC)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
 					"error": err.Error(),
@@ -140,7 +150,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 			}
 
-			_, err := e.SendBatch(chunk, req.Subject, req.Template)
+			_, err := e.SendBatch(chunk, req.Subject, req.Template, req.CC, req.BCC)
 			if err != nil {
 				totalFailed += len(chunk)
 				batchErrors = append(batchErrors, batchErrorJSON{

@@ -31,6 +31,7 @@ func NewServer(cfg *config.Config) *Server {
 	srv.mux.HandleFunc("GET /logs", handlers.HandleLogs(cfg.APIKey))
 	srv.mux.HandleFunc("GET /compose", handlers.HandleCompose)
 	srv.mux.HandleFunc("GET /config", handlers.HandleConfig(cfg))
+	srv.mux.HandleFunc("POST /config", handlers.HandleConfigUpdate(e, cfg))
 
 	return srv
 }

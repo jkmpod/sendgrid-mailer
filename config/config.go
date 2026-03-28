@@ -56,7 +56,7 @@ func Load() (*Config, error) {
 		rateDelayMS = n
 	}
 
-	testMode := false
+	testMode := true
 	if v := strings.TrimSpace(os.Getenv("TEST_MODE")); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
@@ -78,10 +78,6 @@ func Load() (*Config, error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
-	}
-
-	if testMode && len(testEmails) == 0 {
-		return nil, fmt.Errorf("TEST_EMAILS is required when TEST_MODE is true")
 	}
 
 	return &Config{

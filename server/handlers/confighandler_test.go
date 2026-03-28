@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
+	"github.com/jkmpod/sendgrid-mailer/mailer"
 )
 
 func TestHandleConfig(t *testing.T) {
@@ -51,6 +53,7 @@ func TestHandleConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			SetLastSubject(tt.setSubject)
 			ResetSendLog()
+			ResetRuntimeConfig()
 
 			cfg := &config.Config{
 				TestMode: tt.testMode,
@@ -137,5 +140,84 @@ func TestHandleConfig_WithSendLog(t *testing.T) {
 	}
 	if int(entry["totalSent"].(float64)) != 3 {
 		t.Errorf("entry.totalSent = %v, want 3", entry["totalSent"])
+	}
+}
+
+func TestHandleConfigUpdate(t *testing.T) {
+	cfg := &config.Config{
+		APIKey:    "SG.test",
+		FromEmail: "default@example.com",
+		FromName:  "Default",
+		TestMode:  true,
+	}
+	e := mailer.NewEmailer(cfg)
+
+	tests := []struct {
+		name         string
+		body         string
+		wantStatus   int
+		wantTestMode bool
+		wantFrom     string
+	}{
+		{
+			name:         "toggle test mode off",
+			body:         `{"testMode": false}`,
+			wantStatus:   http.StatusOK,
+			wantTestMode: false,
+			wantFrom:     "default@example.com",
+		},
+		{
+			name:         "update from email",
+			body:         `{"fromEmail": "new@example.com"}`,
+			wantStatus:   http.StatusOK,
+			wantTestMode: false, // retains previous override
+			wantFrom:     "new@example.com",
+		},
+		{
+			name:         "update test emails",
+			body:         `{"testEmails": ["a@x.com", "b@x.com"]}`,
+			wantStatus:   http.StatusOK,
+			wantTestMode: false,
+			wantFrom:     "new@example.com",
+		},
+		{
+			name:       "invalid JSON returns 400",
+			body:       `{bad`,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	ResetRuntimeConfig()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := HandleConfigUpdate(e, cfg)
+			req := httptest.NewRequest("POST", "/config", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body: %s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+
+			var resp map[string]interface{}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to parse response: %v", err)
+			}
+
+			if got := resp["testMode"].(bool); got != tt.wantTestMode {
+				t.Errorf("testMode = %v, want %v", got, tt.wantTestMode)
+			}
+			if tt.wantFrom != "" {
+				if got := resp["fromEmail"].(string); got != tt.wantFrom {
+					t.Errorf("fromEmail = %q, want %q", got, tt.wantFrom)
+				}
+			}
+		})
 	}
 }
