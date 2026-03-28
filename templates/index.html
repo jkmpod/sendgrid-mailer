@@ -453,12 +453,8 @@
         <select id="log-status-select">
           <option value="">All</option>
           <option value="delivered">Delivered</option>
-          <option value="not_delivered">Not Delivered</option>
-          <option value="bounced">Bounced</option>
-          <option value="blocked">Blocked</option>
-          <option value="deferred">Deferred</option>
+          <option value="not_delivered">Not Delivered (bounced, blocked, dropped, deferred)</option>
           <option value="processing">Processing</option>
-          <option value="spam_reported">Spam Reported</option>
         </select>
       </div>
       <div class="filter-field">
@@ -476,10 +472,9 @@
     </div>
 
     <div class="quick-filters">
-      <button class="quick-filter" data-status="bounced">Bounced</button>
-      <button class="quick-filter" data-status="blocked">Blocked</button>
-      <button class="quick-filter" data-status="not_delivered">Failed</button>
-      <button class="quick-filter" data-status="deferred">Deferred</button>
+      <button class="quick-filter" data-status="not_delivered">Not Delivered</button>
+      <button class="quick-filter" data-status="delivered">Delivered</button>
+      <button class="quick-filter" data-status="processing">Processing</button>
     </div>
 
     <div id="log-cooldown" class="status info hidden"></div>

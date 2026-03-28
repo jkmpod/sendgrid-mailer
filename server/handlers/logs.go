@@ -11,15 +11,14 @@ import (
 )
 
 // validStatuses is the set of status values accepted by the SendGrid
-// Activity Feed API. We validate against this to prevent query injection.
+// Email Activity Feed API query language. SendGrid collapses all failure
+// modes (bounces, blocks, deferrals, spam reports) into "not_delivered".
+// Only these three values are valid — event-level granularity (bounced,
+// blocked, etc.) is not queryable via the status filter.
 var validStatuses = map[string]bool{
 	"delivered":     true,
 	"not_delivered": true,
-	"bounced":       true,
-	"blocked":       true,
-	"deferred":      true,
 	"processing":    true,
-	"spam_reported": true,
 }
 
 const sendgridMessagesURL = "https://api.sendgrid.com/v3/messages"

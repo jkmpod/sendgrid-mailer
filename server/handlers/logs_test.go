@@ -59,9 +59,9 @@ func TestHandleLogs(t *testing.T) {
 			wantInURL: `subject="Hello"`,
 		},
 		{
-			name:      "status filter bounced",
-			query:     "?status=bounced",
-			wantInURL: `status="bounced"`,
+			name:      "status filter not_delivered",
+			query:     "?status=not_delivered",
+			wantInURL: `status="not_delivered"`,
 		},
 		{
 			name:       "invalid status is ignored",
@@ -69,8 +69,13 @@ func TestHandleLogs(t *testing.T) {
 			wantAbsent: "status=",
 		},
 		{
+			name:       "unsupported granular status bounced is ignored",
+			query:      "?status=bounced",
+			wantAbsent: "status=",
+		},
+		{
 			name:      "combined subject and status",
-			query:     "?subject=Hi&status=blocked",
+			query:     "?subject=Hi&status=delivered",
 			wantInURL: " AND ",
 		},
 		{
