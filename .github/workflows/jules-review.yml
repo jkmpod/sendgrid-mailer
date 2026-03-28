@@ -1,0 +1,33 @@
+name: Jules AI Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronized, reopened]
+
+jobs:
+  jules-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Invoke Jules Review
+        id: jules
+        uses: google-labs-code/jules-invoke@main
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          prompt: |
+            You are a Senior Go Developer. 
+            Review this PR based on the 'Go Handler Checklist' in AGENTS.md.
+            
+            IMPORTANT:
+            1. Follow the 'Standard Library Only' constraint in AGENTS.md.
+            2. Incorporate any additional style rules found in CLAUDE.md.
+            3. Provide a clear summary of any violations as a PR comment.
+
+      - name: Check Review Results
+        if: steps.jules.outputs.conclusion == 'failure'
+        run: exit 1

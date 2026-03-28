@@ -1,9 +1,10 @@
 # About the project
 - Project: sendgrid-mailer
 - Language: Go 1.22+
-- Module name: github.com/[your-username]/sendgrid-mailer
+- Module name: github.com/jkmpod/sendgrid-mailer
 - SendGrid SDK: github.com/sendgrid/sendgrid-go
-- Purpose: A Go web app for sending bulk personalised emails via the SendGrid v3 API.It replaces a Python script and adds a browser-based UI.
+- Dependencies: github.com/joho/godotenv (for .env loading in main.go only)
+- Purpose: A Go web app for sending bulk personalised emails via the SendGrid v3 API. It replaces a Python script and adds a browser-based UI.
 
 ## Default Exports
 [go doc -all output for all packages]
@@ -27,8 +28,9 @@ type Config struct {
 
 func Load() (*Config, error)
     Load reads configuration from environment variables and returns a populated
-    Config pointer. It returns an error if any required variable is missing or
-    if an integer variable contains a non-numeric value.
+    Config pointer. TestMode defaults to true when TEST_MODE is not set.
+    It returns an error if any required variable (SENDGRID_API_KEY, FROM_EMAIL,
+    FROM_NAME) is missing or if an integer variable contains a non-numeric value.
 
 package models // import "github.com/jkmpod/sendgrid-mailer/models"
 
@@ -66,11 +68,14 @@ func BuildMail(
         subject string,
         htmlTemplate string,
         recipients []models.EmailRecipient,
+        cc []string,
+        bcc []string,
 ) (*mail.SGMailV3, error)
     BuildMail constructs an SGMailV3 message with one Personalization per
     recipient. The htmlTemplate string is parsed as a Go text/template and
     executed once for each recipient. Template data includes "Email", "Name",
-    and every key from recipient.CustomFields.
+    and every key from recipient.CustomFields. CC and BCC addresses are added
+    to each Personalization.
 
 func ChunkRecipients(recipients []models.EmailRecipient, batchSize int) [][]models.EmailRecipient
     ChunkRecipients splits a slice of recipients into batches of at most
@@ -100,10 +105,18 @@ func NewEmailer(cfg *config.Config) *Emailer
     NewEmailer creates an Emailer from application config. It initialises the
     SendGrid client using the API key from cfg.
 
+func (e *Emailer) GetFrom() (email, name string)
+    GetFrom returns the current sender address. Thread-safe.
+
+func (e *Emailer) SetFrom(email, name string)
+    SetFrom updates the sender address at runtime. Thread-safe.
+
 func (e *Emailer) SendBatch(
         recipients []models.EmailRecipient,
         subject string,
         htmlTemplate string,
+        cc []string,
+        bcc []string,
 ) (map[string]interface{}, error)
     SendBatch sends a single batch of recipients. It builds the mail message,
     calls the SendGrid API, and returns the parsed response body.
@@ -112,6 +125,8 @@ func (e *Emailer) SendBulk(
         recipients []models.EmailRecipient,
         subject string,
         htmlTemplate string,
+        cc []string,
+        bcc []string,
 ) (SendResult, error)
     SendBulk splits recipients into batches, sends each one, and collects
     results. It does NOT stop on the first batch error — partial success
@@ -124,6 +139,8 @@ func (e *Emailer) SendTest(
         subject string,
         htmlTemplate string,
         firstRecipient models.EmailRecipient,
+        cc []string,
+        bcc []string,
 ) (SendResult, error)
     SendTest sends a test email to each address in testEmails, personalised
     using data from firstRecipient (as if each test address were that person).
@@ -163,9 +180,36 @@ func AppendSendLog(entry SendLogEntry)
     AppendSendLog adds an entry to the in-memory send log. The log is capped at
     50 entries — oldest entries are dropped first.
 
+func EffectiveFromEmail(cfg *config.Config) string
+    EffectiveFromEmail returns the runtime override if non-empty, else
+    cfg.FromEmail.
+
+func EffectiveFromName(cfg *config.Config) string
+    EffectiveFromName returns the runtime override if non-empty, else
+    cfg.FromName.
+
+func EffectiveTestEmails(cfg *config.Config) []string
+    EffectiveTestEmails returns the runtime override if set, else
+    cfg.TestEmails.
+
+func EffectiveTestMode(cfg *config.Config) bool
+    EffectiveTestMode returns the runtime override if set, else cfg.TestMode.
+
 func GetLastSubject() string
     GetLastSubject returns the subject line of the most recent successful send.
     It returns an empty string if no send has happened yet.
+
+func GetRuntimeFromEmail() string
+    GetRuntimeFromEmail returns the override value, or "" if not set.
+
+func GetRuntimeFromName() string
+    GetRuntimeFromName returns the override value, or "" if not set.
+
+func GetRuntimeTestEmails() []string
+    GetRuntimeTestEmails returns the override value, or nil if not set.
+
+func GetRuntimeTestMode() *bool
+    GetRuntimeTestMode returns the override value, or nil if not set.
 
 func HandleCompose(w http.ResponseWriter, r *http.Request)
     HandleCompose returns the column names and file path from the most
@@ -174,8 +218,13 @@ func HandleCompose(w http.ResponseWriter, r *http.Request)
 
 func HandleConfig(cfg *config.Config) http.HandlerFunc
     HandleConfig returns an http.HandlerFunc that responds with a JSON object
-    containing the current test mode status. The UI uses this on page load to
-    show or hide the "TEST MODE ACTIVE" badge.
+    containing the current effective configuration. The UI uses this on page
+    load to populate all settings fields.
+
+func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
+    HandleConfigUpdate returns an http.HandlerFunc that accepts a JSON POST
+    to update runtime configuration. Changes are in-memory only and reset
+    on app restart.
 
 func HandleLogs(apiKey string) http.HandlerFunc
     HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
@@ -187,14 +236,16 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
     HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
     recipients from a CSV, and sends email in batches. Progress is streamed to
     the client using Server-Sent Events (text/event-stream) so the log panel
-    updates in real time. When cfg.TestMode is true, emails are sent only to
-    cfg.TestEmails using the first CSV row for personalisation.
+    updates in real time. Test mode is resolved via EffectiveTestMode(cfg).
 
 func HandleUpload(w http.ResponseWriter, r *http.Request)
     HandleUpload accepts a multipart/form-data POST with a CSV file field
     named "file". It saves the file to a temp directory, parses it with
     loader.LoadFromCSV, and returns JSON with the recipient count, column names,
     and a preview of the first 3 rows.
+
+func ResetRuntimeConfig()
+    ResetRuntimeConfig clears all runtime overrides. Used by tests.
 
 func ResetSendLog()
     ResetSendLog clears the in-memory send log. Used by tests.
@@ -207,6 +258,18 @@ func SetLastFilePath(path string)
 
 func SetLastSubject(s string)
     SetLastSubject stores the subject line of the most recent successful send.
+
+func SetRuntimeFromEmail(v string)
+    SetRuntimeFromEmail overrides the sender email from config.
+
+func SetRuntimeFromName(v string)
+    SetRuntimeFromName overrides the sender name from config.
+
+func SetRuntimeTestEmails(v []string)
+    SetRuntimeTestEmails overrides the test email list from config.
+
+func SetRuntimeTestMode(v bool)
+    SetRuntimeTestMode overrides the test mode setting from config.
 
 
 TYPES
@@ -224,6 +287,79 @@ type SendLogEntry struct {
 func GetSendLog() []SendLogEntry
     GetSendLog returns a copy of the in-memory send log. Returns an empty slice
     (not nil) if no sends have occurred.
+
+## API Endpoints
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| GET | / | `srv.handleIndex` | Serves `templates/index.html` |
+| POST | /upload | `HandleUpload` | Accepts multipart CSV, returns recipient count + preview |
+| POST | /send | `HandleSend(e, cfg)` | Sends email (test or bulk), streams progress via SSE |
+| GET | /logs | `HandleLogs(apiKey)` | Proxies SendGrid Activity Feed API |
+| GET | /compose | `HandleCompose` | Returns last uploaded column names |
+| GET | /config | `HandleConfig(cfg)` | Returns effective config (testMode, testEmails, fromEmail, fromName, lastSubject, sendLog) |
+| POST | /config | `HandleConfigUpdate(e, cfg)` | Updates runtime config (testMode, testEmails, fromEmail, fromName) |
+
+### POST /send request shape
+```json
+{
+  "subject": "Hello {{.Name}}",
+  "template": "<p>Hi {{.Name}}</p>",
+  "filePath": "/tmp/sendgrid-upload-xxx.csv",
+  "cc": ["cc@example.com"],
+  "bcc": ["bcc@example.com"]
+}
+```
+
+### POST /config request shape (all fields optional)
+```json
+{
+  "testMode": false,
+  "testEmails": ["test@example.com"],
+  "fromEmail": "sender@example.com",
+  "fromName": "Sender Name"
+}
+```
+
+### GET /config response shape
+```json
+{
+  "testMode": true,
+  "testEmails": ["test@example.com"],
+  "fromEmail": "sender@example.com",
+  "fromName": "Sender Name",
+  "lastSubject": "Welcome",
+  "sendLog": [{"time": "...", "subject": "...", "totalSent": 5, "totalFailed": 0, "testMode": false}]
+}
+```
+
+## GitHub Automation
+
+### CI Pipeline (`.github/workflows/go-ci.yml`)
+Runs on every push to `master` and every PR targeting `master`:
+- `go mod download` + `go mod verify`
+- `go build ./...`
+- `go vet ./...`
+- `go test ./... -v -count=1`
+
+### Jules AI Reviewer (`.github/workflows/jules-review.yml`)
+Runs on PR open/synchronize. Uses `google-labs-code/jules-invoke@v1` with `JULES_API_KEY` secret. Reviews against:
+- Go Handler Checklist in `AGENTS.md`
+- Standard Library Only constraint in `AGENTS.md`
+- Style rules in `CLAUDE.md`
+
+A failure gate step blocks merge if Jules concludes with failure.
+
+### Dependabot (`.github/dependabot.yml`)
+Weekly (Monday) updates for:
+- `gomod` — Go module dependencies
+- `github-actions` — Action versions in workflow files
+
+### PR Template (`.github/PULL_REQUEST_TEMPLATE.md`)
+Standardized Go PR template with sections: Summary, System Impact, What Changed, Test Strategy, AI Usage, Screenshots, Checklist.
+
+### Review Criteria (`AGENTS.md`)
+Structured checklist for AI reviewers: Standard Library Only constraint, Go Handler Checklist (8 points), Code Style Rules, Package Dependency Order.
 
 ## Ground Rules
 Ground rules for this session:

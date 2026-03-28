@@ -80,6 +80,7 @@ docker-compose.override.yml
 # Learning notes
 learning.md
 session-tracker.md
+pr-update.md
 
 # CLAUDE settings
 .claude/
