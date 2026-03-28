@@ -228,9 +228,11 @@ func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
 
 func HandleLogs(apiKey string) http.HandlerFunc
     HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
-    API to fetch the last 50 message events and returns the raw JSON response
-    to the client. If a ?subject= query param is provided, it is passed to the
-    SendGrid API as a query filter.
+    API and returns the raw JSON response to the client. It accepts optional
+    query parameters to filter results: ?limit=N (default 50, max 1000),
+    ?subject=..., ?status=... (validated against known SendGrid statuses),
+    ?to_email=..., ?from_date=... and ?to_date=... (ISO 8601 timestamps).
+    Multiple filters are combined with AND.
 
 func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc
     HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
@@ -295,7 +297,7 @@ func GetSendLog() []SendLogEntry
 | GET | / | `srv.handleIndex` | Serves `templates/index.html` |
 | POST | /upload | `HandleUpload` | Accepts multipart CSV, returns recipient count + preview |
 | POST | /send | `HandleSend(e, cfg)` | Sends email (test or bulk), streams progress via SSE |
-| GET | /logs | `HandleLogs(apiKey)` | Proxies SendGrid Activity Feed API |
+| GET | /logs | `HandleLogs(apiKey)` | Proxies SendGrid Activity Feed API with filters (status, recipient, date range) |
 | GET | /compose | `HandleCompose` | Returns last uploaded column names |
 | GET | /config | `HandleConfig(cfg)` | Returns effective config (testMode, testEmails, fromEmail, fromName, lastSubject, sendLog) |
 | POST | /config | `HandleConfigUpdate(e, cfg)` | Updates runtime config (testMode, testEmails, fromEmail, fromName) |
@@ -332,6 +334,17 @@ func GetSendLog() []SendLogEntry
   "sendLog": [{"time": "...", "subject": "...", "totalSent": 5, "totalFailed": 0, "testMode": false}]
 }
 ```
+
+### GET /logs query parameters (all optional)
+```
+?limit=200                           — results per request (default 50, max 1000)
+?subject=Welcome                     — filter by subject line
+?status=bounced                      — filter by delivery status (delivered, not_delivered, bounced, blocked, deferred, processing, spam_reported)
+?to_email=user@example.com           — filter by recipient email
+?from_date=2026-03-01T00:00:00Z      — start of date range (requires to_date)
+?to_date=2026-03-28T23:59:59Z        — end of date range (requires from_date)
+```
+Multiple filters are combined with AND in the SendGrid query language.
 
 ## GitHub Automation
 
