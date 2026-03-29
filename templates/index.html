@@ -219,6 +219,96 @@
       transition: width 0.3s;
     }
 
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: flex-end;
+      margin-bottom: 0.75rem;
+    }
+    .filter-bar .filter-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      flex: 1;
+      min-width: 120px;
+    }
+    .filter-bar label {
+      margin-bottom: 0;
+    }
+    .filter-bar select,
+    .filter-bar input[type="date"] {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 0.9rem;
+      background: var(--bg);
+    }
+    .filter-bar select:focus,
+    .filter-bar input[type="date"]:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: -1px;
+      border-color: var(--primary);
+    }
+
+    /* Quick filter chips */
+    .quick-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.75rem;
+    }
+    .quick-filter {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      border: none;
+      transition: background 0.15s;
+    }
+    .quick-filter:hover { background: #fde68a; }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+    }
+    .pagination button {
+      padding: 0.3rem 0.7rem;
+      font-size: 0.8rem;
+    }
+    .pagination .page-info {
+      color: var(--muted);
+    }
+    .page-size-group {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+    }
+    .page-size-btn {
+      padding: 0.2rem 0.5rem !important;
+      font-size: 0.75rem !important;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .page-size-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
     /* Preview iframe */
     #preview-frame {
       width: 100%;
@@ -357,13 +447,45 @@
       <input type="text" id="log-subject-input" placeholder="Enter a subject to search logs">
     </div>
 
+    <div class="filter-bar">
+      <div class="filter-field">
+        <label for="log-status-select">Status</label>
+        <select id="log-status-select">
+          <option value="">All</option>
+          <option value="delivered">Delivered</option>
+          <option value="not_delivered">Not Delivered (bounced, blocked, dropped, deferred)</option>
+          <option value="processing">Processing</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="log-recipient-input">Recipient</label>
+        <input type="text" id="log-recipient-input" placeholder="user@example.com">
+      </div>
+      <div class="filter-field">
+        <label for="log-from-date">From</label>
+        <input type="date" id="log-from-date">
+      </div>
+      <div class="filter-field">
+        <label for="log-to-date">To</label>
+        <input type="date" id="log-to-date">
+      </div>
+    </div>
+
+    <div class="quick-filters">
+      <button class="quick-filter" data-status="not_delivered">Not Delivered</button>
+      <button class="quick-filter" data-status="delivered">Delivered</button>
+      <button class="quick-filter" data-status="processing">Processing</button>
+    </div>
+
     <div id="log-cooldown" class="status info hidden"></div>
     <div id="log-warning" class="hidden"></div>
 
     <div class="button-row">
       <button class="btn-secondary" id="logs-btn" type="button" disabled>View SendGrid Activity</button>
+      <button class="btn-secondary" id="download-csv-btn" type="button" style="display:none;">Download CSV</button>
     </div>
     <div id="activity-table" class="table-wrap hidden"></div>
+    <div id="log-pagination" class="pagination hidden"></div>
   </section>
 
 </div>
@@ -378,6 +500,9 @@
   let lastSentSubject = "";    // populated from /config on load
   let lastSendTime = null;     // Date object, set when a send completes
   let cooldownInterval = null; // setInterval ID for countdown
+  let allLogMessages = [];     // full fetched log dataset for pagination
+  let logCurrentPage = 1;
+  let logPageSize = 25;
 
   // --- DOM refs ---
   const csvFileInput      = document.getElementById("csv-file");
@@ -410,6 +535,12 @@
   const logCooldown       = document.getElementById("log-cooldown");
   const logWarning        = document.getElementById("log-warning");
   const activityTable     = document.getElementById("activity-table");
+  const logStatusSelect   = document.getElementById("log-status-select");
+  const logRecipientInput = document.getElementById("log-recipient-input");
+  const logFromDate       = document.getElementById("log-from-date");
+  const logToDate         = document.getElementById("log-to-date");
+  const downloadCsvBtn    = document.getElementById("download-csv-btn");
+  const logPagination     = document.getElementById("log-pagination");
 
   // --- Helpers ---
   function show(el, cls) {
@@ -458,8 +589,8 @@
       lastSentSubject = data.lastSubject || "";
       if (lastSentSubject) {
         logSubjectInput.value = lastSentSubject;
-        logsBtn.disabled = false;
       }
+      logsBtn.disabled = false;
     } catch (err) {
       // Config endpoint unavailable — assume test mode.
       isTestMode = true;
@@ -518,7 +649,7 @@
   // Enable/disable View Logs button based on subject input content.
   logSubjectInput.addEventListener("input", function() {
     if (!lastSendTime || !isCooldownActive()) {
-      logsBtn.disabled = logSubjectInput.value.trim() === "";
+      logsBtn.disabled = false;
     }
   });
 
@@ -852,7 +983,7 @@
         cooldownInterval = null;
         hide(logCooldown);
         logSubjectInput.disabled = false;
-        logsBtn.disabled = logSubjectInput.value.trim() === "";
+        logsBtn.disabled = false;
         return;
       }
       var mins = Math.floor(remaining / 60000);
@@ -862,20 +993,22 @@
   }
 
   // --- 4. LOG PANEL ---
-  logsBtn.addEventListener("click", async function() {
+
+  // Quick filter chips: set the dropdown and trigger fetch.
+  document.querySelectorAll(".quick-filter").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      logStatusSelect.value = btn.dataset.status;
+      logsBtn.click();
+    });
+  });
+
+  // Fetch logs with all active filters.
+  async function fetchLogs() {
     hide(logWarning);
     var subject = logSubjectInput.value.trim();
 
-    // Empty subject: show inline error, do not fetch.
-    if (!subject) {
-      logWarning.className = "status error";
-      logWarning.textContent = "Enter a subject to search";
-      show(logWarning);
-      return;
-    }
-
     // Mismatch warning: pause 1.5s so the user can read.
-    if (lastSentSubject && subject.toLowerCase() !== lastSentSubject.toLowerCase()) {
+    if (subject && lastSentSubject && subject.toLowerCase() !== lastSentSubject.toLowerCase()) {
       logWarning.className = "status info";
       logWarning.textContent = "This subject differs from your last send (" +
         lastSentSubject + "). Fetching anyway.";
@@ -887,54 +1020,148 @@
     logsBtn.textContent = "Loading...";
 
     try {
-      const resp = await fetch("/logs?subject=" + encodeURIComponent(subject));
+      var params = new URLSearchParams();
+      if (subject) params.set("subject", subject);
+
+      var status = logStatusSelect.value;
+      if (status) params.set("status", status);
+
+      var toEmail = logRecipientInput.value.trim();
+      if (toEmail) params.set("to_email", toEmail);
+
+      var fromDate = logFromDate.value;
+      var toDate = logToDate.value;
+      if (fromDate && toDate) {
+        params.set("from_date", fromDate + "T00:00:00Z");
+        params.set("to_date", toDate + "T23:59:59Z");
+      }
+
+      params.set("limit", "1000");
+
+      const resp = await fetch("/logs?" + params.toString());
       const data = await resp.json();
 
       if (!resp.ok) {
         activityTable.innerHTML =
           "<div class='status error'>SendGrid logs unavailable</div>";
         show(activityTable);
+        hide(logPagination);
+        downloadCsvBtn.style.display = "none";
         return;
       }
 
-      const messages = data.messages || [];
-      if (messages.length === 0) {
+      allLogMessages = data.messages || [];
+      logCurrentPage = 1;
+
+      if (allLogMessages.length === 0) {
         activityTable.innerHTML =
-          "<div class='status info'>No results found for this subject</div>";
+          "<div class='status info'>No results found for these filters</div>";
         show(activityTable);
+        hide(logPagination);
+        downloadCsvBtn.style.display = "none";
         return;
       }
 
-      let html = "<table><thead><tr>" +
-        "<th>Time Sent</th><th>Recipient</th><th>Status</th><th>Subject</th>" +
-        "</tr></thead><tbody>";
-
-      messages.forEach(function(msg) {
-        const ts = msg.last_event_time || msg.created || "";
-        const to = msg.to_email || "";
-        const status = msg.status || "";
-        const subj = msg.subject || "";
-        html += "<tr>" +
-          "<td>" + escapeHTML(ts) + "</td>" +
-          "<td>" + escapeHTML(to) + "</td>" +
-          "<td>" + escapeHTML(status) + "</td>" +
-          "<td>" + escapeHTML(subj) + "</td>" +
-          "</tr>";
-      });
-
-      html += "</tbody></table>";
-      activityTable.innerHTML = html;
-      show(activityTable);
+      downloadCsvBtn.style.display = "";
+      renderLogPage();
 
     } catch (err) {
       activityTable.innerHTML =
         "<div class='status error'>SendGrid logs unavailable</div>";
       show(activityTable);
+      hide(logPagination);
+      downloadCsvBtn.style.display = "none";
     } finally {
       logsBtn.disabled = isCooldownActive();
       logsBtn.textContent = "View SendGrid Activity";
     }
-  });
+  }
+
+  // Render the current page of log results.
+  function renderLogPage() {
+    var totalPages = Math.ceil(allLogMessages.length / logPageSize);
+    var start = (logCurrentPage - 1) * logPageSize;
+    var end = start + logPageSize;
+    var pageMessages = allLogMessages.slice(start, end);
+
+    var html = "<table><thead><tr>" +
+      "<th>Time Sent</th><th>Recipient</th><th>Status</th><th>Subject</th>" +
+      "</tr></thead><tbody>";
+
+    pageMessages.forEach(function(msg) {
+      var ts = msg.last_event_time || msg.created || "";
+      var to = msg.to_email || "";
+      var st = msg.status || "";
+      var subj = msg.subject || "";
+      html += "<tr>" +
+        "<td>" + escapeHTML(ts) + "</td>" +
+        "<td>" + escapeHTML(to) + "</td>" +
+        "<td>" + escapeHTML(st) + "</td>" +
+        "<td>" + escapeHTML(subj) + "</td>" +
+        "</tr>";
+    });
+
+    html += "</tbody></table>";
+    activityTable.innerHTML = html;
+    show(activityTable);
+
+    // Pagination controls.
+    var pagHtml = "<span class='page-info'>" + allLogMessages.length + " results</span>";
+    pagHtml += "<button class='btn-secondary' id='pg-prev'" +
+      (logCurrentPage <= 1 ? " disabled" : "") + ">Previous</button>";
+    pagHtml += "<span class='page-info'>Page " + logCurrentPage + " of " + totalPages + "</span>";
+    pagHtml += "<button class='btn-secondary' id='pg-next'" +
+      (logCurrentPage >= totalPages ? " disabled" : "") + ">Next</button>";
+    pagHtml += "<span class='page-size-group'>Per page: ";
+    [25, 50, 100].forEach(function(size) {
+      pagHtml += "<button class='page-size-btn" +
+        (logPageSize === size ? " active" : "") +
+        "' data-size='" + size + "'>" + size + "</button>";
+    });
+    pagHtml += "</span>";
+
+    logPagination.innerHTML = pagHtml;
+    show(logPagination);
+
+    // Bind pagination events.
+    var prevBtn = document.getElementById("pg-prev");
+    var nextBtn = document.getElementById("pg-next");
+    if (prevBtn) prevBtn.addEventListener("click", function() {
+      if (logCurrentPage > 1) { logCurrentPage--; renderLogPage(); }
+    });
+    if (nextBtn) nextBtn.addEventListener("click", function() {
+      if (logCurrentPage < totalPages) { logCurrentPage++; renderLogPage(); }
+    });
+    document.querySelectorAll(".page-size-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        logPageSize = parseInt(btn.dataset.size, 10);
+        logCurrentPage = 1;
+        renderLogPage();
+      });
+    });
+  }
+
+  // Download all fetched results as CSV.
+  function downloadLogsCSV() {
+    var header = "Time Sent,Recipient,Status,Subject\n";
+    var rows = allLogMessages.map(function(msg) {
+      var ts = (msg.last_event_time || msg.created || "").replace(/"/g, '""');
+      var to = (msg.to_email || "").replace(/"/g, '""');
+      var st = (msg.status || "").replace(/"/g, '""');
+      var subj = (msg.subject || "").replace(/"/g, '""');
+      return '"' + ts + '","' + to + '","' + st + '","' + subj + '"';
+    }).join("\n");
+    var blob = new Blob([header + rows], { type: "text/csv" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "sendgrid-logs-" + Date.now() + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  logsBtn.addEventListener("click", fetchLogs);
+  downloadCsvBtn.addEventListener("click", downloadLogsCSV);
 
 })();
 </script>
