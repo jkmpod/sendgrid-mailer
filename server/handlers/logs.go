@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
 // validStatuses is the set of status values accepted by the SendGrid
@@ -46,11 +44,6 @@ func HandleLogs(apiKey string) http.HandlerFunc {
 func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-
-		//Doing a logrus log here to test the logging setup in the test file.
-		logrus.WithFields(logrus.Fields{
-			"query": q.Encode(),
-		}).Info("Received logs request with query parameters")
 
 		// Parse limit (default 50, max 1000).
 		limit := 50
