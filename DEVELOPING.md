@@ -21,6 +21,14 @@ go run .                  # starts on PORT (default 8080)
 `go run .` reads `.env` from the project root via `godotenv`. Copy
 `.env.example` to `.env` first.
 
+## After a PR is merged
+
+Run `scripts/post-merge.sh` from the repo root once GitHub shows the PR as
+merged. It checks that your working tree is clean, switches to `master`,
+fast-forwards to the latest remote commit, attempts a safe delete of the
+feature branch you were on, and prunes stale remote-tracking refs. The script
+works in Git Bash on Windows and in standard Linux/macOS bash.
+
 ## Reusable skills
 
 Each file under `.claude/skills/` is a deeper write-up of one pattern used in
