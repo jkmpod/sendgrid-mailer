@@ -23,14 +23,14 @@ linters:
     # Security:
     - gosec          # security-focused checks (hardcoded creds, weak crypto, etc.)
 
+# NOTE: errcheck has no settings block on purpose. Earlier versions of this
+# config excluded fmt.Fprint* and (net/http.ResponseWriter).Write as "noisy
+# or harmless"; in this codebase those calls write to the response writer
+# and DO carry meaningful errors (e.g. the SSE stream in HandleSend). The
+# exclusion masked a real ignored-error bug in sseEvent (caught by review,
+# not by the linter). If a specific call site genuinely cannot fail, use
+# `_, _ = call(...)` at that site to make the ignore explicit.
 linters-settings:
-  errcheck:
-    # Don't require checking errors from these noisy or harmless calls.
-    exclude-functions:
-      - (net/http.ResponseWriter).Write
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - fmt.Fprint
   gosec:
     # G104 (unchecked errors) overlaps with errcheck — let errcheck handle it.
     excludes:

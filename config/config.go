@@ -9,14 +9,26 @@ import (
 
 // Config holds all application configuration read from environment variables.
 type Config struct {
-	APIKey       string
-	FromEmail    string
-	FromName     string
+	// APIKey is the SendGrid v3 API key (env: SENDGRID_API_KEY). Required.
+	APIKey string
+	// FromEmail is the verified sender email address (env: FROM_EMAIL). Required.
+	FromEmail string
+	// FromName is the sender display name (env: FROM_NAME). Required.
+	FromName string
+	// MaxBatchSize caps recipients per SendGrid API call (env: MAX_BATCH_SIZE, default 1000).
 	MaxBatchSize int
-	RateDelayMS  int
-	TestMode     bool
-	TestEmails   []string
-	Port         string
+	// RateDelayMS is the inter-batch sleep in milliseconds (env: RATE_DELAY_MS, default 100).
+	RateDelayMS int
+	// TestMode, when true, diverts every send to TestEmails (env: TEST_MODE, default false).
+	TestMode bool
+	// TestEmails is the comma-separated test address list (env: TEST_EMAILS). Required when TestMode is true.
+	TestEmails []string
+	// Port is the HTTP server listen port (env: PORT, default 8080).
+	Port string
+	// MessagesURL overrides the SendGrid Activity Feed endpoint (env: SENDGRID_MESSAGES_URL, default https://api.sendgrid.com/v3/messages).
+	MessagesURL string
+	// MaxUploadSizeMB caps the multipart upload body in megabytes (env: MAX_UPLOAD_SIZE_MB, default 10).
+	MaxUploadSizeMB int
 }
 
 // Load reads configuration from environment variables and returns a populated
@@ -80,14 +92,30 @@ func Load() (*Config, error) {
 		port = "8080"
 	}
 
+	messagesURL := os.Getenv("SENDGRID_MESSAGES_URL")
+	if messagesURL == "" {
+		messagesURL = "https://api.sendgrid.com/v3/messages"
+	}
+
+	maxUploadSizeMB := 10
+	if v := strings.TrimSpace(os.Getenv("MAX_UPLOAD_SIZE_MB")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("MAX_UPLOAD_SIZE_MB must be a valid integer: %w", err)
+		}
+		maxUploadSizeMB = n
+	}
+
 	return &Config{
-		APIKey:       apiKey,
-		FromEmail:    fromEmail,
-		FromName:     fromName,
-		MaxBatchSize: maxBatchSize,
-		RateDelayMS:  rateDelayMS,
-		TestMode:     testMode,
-		TestEmails:   testEmails,
-		Port:         port,
+		APIKey:          apiKey,
+		FromEmail:       fromEmail,
+		FromName:        fromName,
+		MaxBatchSize:    maxBatchSize,
+		RateDelayMS:     rateDelayMS,
+		TestMode:        testMode,
+		TestEmails:      testEmails,
+		Port:            port,
+		MessagesURL:     messagesURL,
+		MaxUploadSizeMB: maxUploadSizeMB,
 	}, nil
 }

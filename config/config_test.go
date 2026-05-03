@@ -13,6 +13,7 @@ func clearEnv(t *testing.T) {
 		"SENDGRID_API_KEY", "FROM_EMAIL", "FROM_NAME",
 		"MAX_BATCH_SIZE", "RATE_DELAY_MS",
 		"TEST_MODE", "TEST_EMAILS",
+		"SENDGRID_MESSAGES_URL", "MAX_UPLOAD_SIZE_MB",
 	}
 	for _, k := range keys {
 		old, exists := os.LookupEnv(k)
@@ -27,16 +28,18 @@ func clearEnv(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	tests := []struct {
-		name           string
-		env            map[string]string
-		wantErr        string // substring expected in error message; "" means no error
-		wantAPIKey     string
-		wantEmail      string
-		wantName       string
-		wantBatch      int
-		wantDelayMS    int
-		wantTestMode   bool
-		wantTestEmails []string
+		name                string
+		env                 map[string]string
+		wantErr             string // substring expected in error message; "" means no error
+		wantAPIKey          string
+		wantEmail           string
+		wantName            string
+		wantBatch           int
+		wantDelayMS         int
+		wantTestMode        bool
+		wantTestEmails      []string
+		wantMessagesURL     string
+		wantMaxUploadSizeMB int
 	}{
 		{
 			name: "all valid with defaults",
@@ -45,12 +48,14 @@ func TestLoad(t *testing.T) {
 				"FROM_EMAIL":       "test@example.com",
 				"FROM_NAME":        "Test Sender",
 			},
-			wantAPIKey:   "SG.test-key",
-			wantEmail:    "test@example.com",
-			wantName:     "Test Sender",
-			wantBatch:    1000,
-			wantDelayMS:  100,
-			wantTestMode: true,
+			wantAPIKey:          "SG.test-key",
+			wantEmail:           "test@example.com",
+			wantName:            "Test Sender",
+			wantBatch:           1000,
+			wantDelayMS:         100,
+			wantTestMode:        true,
+			wantMessagesURL:     "https://api.sendgrid.com/v3/messages",
+			wantMaxUploadSizeMB: 10,
 		},
 		{
 			name: "all valid with custom integers",
@@ -174,6 +179,50 @@ func TestLoad(t *testing.T) {
 			},
 			wantErr: "TEST_MODE",
 		},
+		{
+			name: "custom SENDGRID_MESSAGES_URL is respected",
+			env: map[string]string{
+				"SENDGRID_API_KEY":      "SG.key",
+				"FROM_EMAIL":            "a@b.com",
+				"FROM_NAME":             "A",
+				"SENDGRID_MESSAGES_URL": "https://custom.example.com/v3/messages",
+			},
+			wantAPIKey:          "SG.key",
+			wantEmail:           "a@b.com",
+			wantName:            "A",
+			wantBatch:           1000,
+			wantDelayMS:         100,
+			wantTestMode:        true,
+			wantMessagesURL:     "https://custom.example.com/v3/messages",
+			wantMaxUploadSizeMB: 10,
+		},
+		{
+			name: "custom MAX_UPLOAD_SIZE_MB is respected",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "SG.key",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"MAX_UPLOAD_SIZE_MB": "25",
+			},
+			wantAPIKey:          "SG.key",
+			wantEmail:           "a@b.com",
+			wantName:            "A",
+			wantBatch:           1000,
+			wantDelayMS:         100,
+			wantTestMode:        true,
+			wantMessagesURL:     "https://api.sendgrid.com/v3/messages",
+			wantMaxUploadSizeMB: 25,
+		},
+		{
+			name: "invalid MAX_UPLOAD_SIZE_MB",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "k",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"MAX_UPLOAD_SIZE_MB": "big",
+			},
+			wantErr: "MAX_UPLOAD_SIZE_MB",
+		},
 	}
 
 	for _, tt := range tests {
@@ -224,6 +273,12 @@ func TestLoad(t *testing.T) {
 						t.Errorf("TestEmails[%d] = %q, want %q", i, email, tt.wantTestEmails[i])
 					}
 				}
+			}
+			if tt.wantMessagesURL != "" && cfg.MessagesURL != tt.wantMessagesURL {
+				t.Errorf("MessagesURL = %q, want %q", cfg.MessagesURL, tt.wantMessagesURL)
+			}
+			if tt.wantMaxUploadSizeMB != 0 && cfg.MaxUploadSizeMB != tt.wantMaxUploadSizeMB {
+				t.Errorf("MaxUploadSizeMB = %d, want %d", cfg.MaxUploadSizeMB, tt.wantMaxUploadSizeMB)
 			}
 		})
 	}

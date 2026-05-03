@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/joho/godotenv"
+
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/server"
 )

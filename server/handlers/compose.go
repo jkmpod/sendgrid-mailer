@@ -13,18 +13,20 @@ var (
 	lastFilePath string
 )
 
-// SetLastColumns stores the column names from the most recent CSV upload.
+// SetLastColumns stores a copy of the column names from the most recent CSV
+// upload. Copying on write ensures the caller's slice and the internal store
+// never share a backing array.
 func SetLastColumns(cols []string) {
 	mu.Lock()
-	lastColumns = cols
-	mu.Unlock()
+	defer mu.Unlock()
+	lastColumns = append([]string(nil), cols...)
 }
 
 // SetLastFilePath stores the file path from the most recent CSV upload.
 func SetLastFilePath(path string) {
 	mu.Lock()
+	defer mu.Unlock()
 	lastFilePath = path
-	mu.Unlock()
 }
 
 // HandleCompose returns the column names and file path from the most recent
@@ -32,7 +34,7 @@ func SetLastFilePath(path string) {
 // persistence is needed.
 func HandleCompose(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
-	cols := lastColumns
+	cols := append([]string(nil), lastColumns...)
 	path := lastFilePath
 	mu.RUnlock()
 

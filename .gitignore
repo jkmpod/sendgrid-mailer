@@ -90,3 +90,7 @@ pr-update.md
 # AI metacognitive log — gitignored until publication (see ADR 002 in ai-log/adr.md)
 ai-log/
 
+# Postmortems are explicitly internal — keep ignored even if ai-log/ is
+# later un-ignored when the rest of the metacognitive log is published.
+ai-log/postmortem.md
+

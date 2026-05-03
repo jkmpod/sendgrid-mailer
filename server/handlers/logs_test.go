@@ -16,9 +16,11 @@ func TestHandleLogs(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// Return the raw URL so tests can inspect it.
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"requestURL": r.URL.String(),
-		})
+		}); err != nil {
+			t.Errorf("failed to encode mock response: %v", err)
+		}
 	}))
 	defer sgServer.Close()
 

@@ -21,8 +21,6 @@ var validStatuses = map[string]bool{
 	"processing":    true,
 }
 
-const sendgridMessagesURL = "https://api.sendgrid.com/v3/messages"
-
 // HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
 // API and returns the raw JSON response to the client. It accepts optional
 // query parameters to filter results:
@@ -34,9 +32,10 @@ const sendgridMessagesURL = "https://api.sendgrid.com/v3/messages"
 //	?from_date=...  — start of date range (ISO 8601 timestamp)
 //	?to_date=...    — end of date range (ISO 8601 timestamp)
 //
-// Multiple filters are combined with AND.
-func HandleLogs(apiKey string) http.HandlerFunc {
-	return handleLogsWithBaseURL(sendgridMessagesURL, apiKey)
+// Multiple filters are combined with AND. messagesURL is the base URL for the
+// SendGrid Activity Feed API, read from cfg.MessagesURL.
+func HandleLogs(apiKey, messagesURL string) http.HandlerFunc {
+	return handleLogsWithBaseURL(messagesURL, apiKey)
 }
 
 // handleLogsWithBaseURL is the core implementation. The baseURL parameter
@@ -109,6 +108,8 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			log.Printf("[logs] failed to stream response body to client: %v", err)
+		}
 	}
 }

@@ -6,42 +6,54 @@ import (
 	"log"
 	"time"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // BatchError records a failure for a specific batch during bulk sending.
 type BatchError struct {
+	// BatchIndex is the zero-based position of the failed batch within the bulk send.
 	BatchIndex int
-	Err        error
+	// Err is the underlying error returned by SendBatch for this batch.
+	Err error
 }
 
 // SendResult summarises the outcome of a bulk send operation.
 // Partial success is expected — check BatchErrors for per-batch details.
 type SendResult struct {
-	TotalSent    int
-	TotalFailed  int
-	BatchErrors  []BatchError
+	// TotalSent is the count of recipients across batches that the SendGrid API accepted.
+	TotalSent int
+	// TotalFailed is the count of recipients across batches that the SendGrid API rejected.
+	TotalFailed int
+	// BatchErrors lists the per-batch failures encountered during the send.
+	BatchErrors []BatchError
 }
 
 // SendBatch sends a single batch of recipients. It builds the mail message,
-// calls the SendGrid API, and returns the parsed response body.
+// calls the SendGrid API, and returns the parsed response body. Optional
+// categories are forwarded to BuildMail and attached at the message level.
 func (e *Emailer) SendBatch(
 	recipients []models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
 	cc []string,
 	bcc []string,
+	categories []string,
 ) (map[string]interface{}, error) {
 	fromEmail, fromName := e.GetFrom()
 	from := mail.NewEmail(fromName, fromEmail)
 
-	msg, err := BuildMail(from, subject, htmlTemplate, recipients, cc, bcc)
+	msg, err := BuildMail(from, subject, htmlTemplate, recipients, cc, bcc, categories)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
-	resp, err := e.client.Send(msg)
+	e.mu.Lock()
+	client := e.client
+	e.mu.Unlock()
+
+	resp, err := client.Send(msg)
 	if err != nil {
 		log.Printf("[mailer] SendBatch: API request failed: %v", err)
 		return nil, fmt.Errorf("SendGrid API request failed: %w", err)
@@ -73,7 +85,8 @@ func (e *Emailer) SendBatch(
 // SendTest sends a test email to each address in testEmails, personalised
 // using data from firstRecipient (as if each test address were that person).
 // The subject is prefixed with "[TEST] ". No chunking is needed — all test
-// emails are sent as a single batch.
+// emails are sent as a single batch. Optional categories are forwarded to
+// BuildMail and attached at the message level.
 func (e *Emailer) SendTest(
 	testEmails []string,
 	subject string,
@@ -81,6 +94,7 @@ func (e *Emailer) SendTest(
 	firstRecipient models.EmailRecipient,
 	cc []string,
 	bcc []string,
+	categories []string,
 ) (SendResult, error) {
 	if len(testEmails) == 0 {
 		return SendResult{}, fmt.Errorf("testEmails must not be empty")
@@ -98,7 +112,7 @@ func (e *Emailer) SendTest(
 	testSubject := "[TEST] " + subject
 	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
 
-	_, err := e.SendBatch(recipients, testSubject, htmlTemplate, cc, bcc)
+	_, err := e.SendBatch(recipients, testSubject, htmlTemplate, cc, bcc, categories)
 	if err != nil {
 		log.Printf("[mailer] SendTest: failed: %v", err)
 		return SendResult{
@@ -115,13 +129,15 @@ func (e *Emailer) SendTest(
 // results. It does NOT stop on the first batch error — partial success is a
 // valid and expected outcome. A top-level error is returned only if something
 // systemic fails (e.g. the template is unparseable). A time.Sleep of
-// RateDelayMS milliseconds is inserted between batches.
+// RateDelayMS milliseconds is inserted between batches. Optional categories
+// are forwarded to every SendBatch call and attached at the message level.
 func (e *Emailer) SendBulk(
 	recipients []models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
 	cc []string,
 	bcc []string,
+	categories []string,
 ) (SendResult, error) {
 	chunks := ChunkRecipients(recipients, e.MaxBatchSize)
 	log.Printf("[mailer] SendBulk: starting send to %d recipients in %d batches", len(recipients), len(chunks))
@@ -133,7 +149,7 @@ func (e *Emailer) SendBulk(
 			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
-		_, err := e.SendBatch(chunk, subject, htmlTemplate, cc, bcc)
+		_, err := e.SendBatch(chunk, subject, htmlTemplate, cc, bcc, categories)
 		if err != nil {
 			sr.TotalFailed += len(chunk)
 			sr.BatchErrors = append(sr.BatchErrors, BatchError{

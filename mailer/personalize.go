@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // BuildMail constructs an SGMailV3 message with one Personalization per
 // recipient. The htmlTemplate string is parsed as a Go text/template and
 // executed once for each recipient. Template data includes "Email", "Name",
-// and every key from recipient.CustomFields.
+// and every key from recipient.CustomFields. CC and BCC addresses are added
+// to each Personalization. Optional categories (up to 10, max 255 chars each)
+// are attached at the message level via m.AddCategories.
 func BuildMail(
 	from *mail.Email,
 	subject string,
@@ -20,6 +23,7 @@ func BuildMail(
 	recipients []models.EmailRecipient,
 	cc []string,
 	bcc []string,
+	categories []string,
 ) (*mail.SGMailV3, error) {
 	tmpl, err := template.New("email").Parse(htmlTemplate)
 	if err != nil {
@@ -29,6 +33,10 @@ func BuildMail(
 	m := mail.NewV3Mail()
 	m.SetFrom(from)
 	m.Subject = subject
+
+	if len(categories) > 0 {
+		m.AddCategories(categories...)
+	}
 
 	for i, r := range recipients {
 		data := make(map[string]string, len(r.CustomFields)+2)

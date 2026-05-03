@@ -27,11 +27,16 @@ var (
 // SendLogEntry records the outcome of a single send operation.
 // Stored in memory only — lost on restart.
 type SendLogEntry struct {
-	Time        time.Time `json:"time"`
-	Subject     string    `json:"subject"`
-	TotalSent   int       `json:"totalSent"`
-	TotalFailed int       `json:"totalFailed"`
-	TestMode    bool      `json:"testMode"`
+	// Time is the wall-clock time at which the send completed.
+	Time time.Time `json:"time"`
+	// Subject is the subject line as submitted (with the [TEST] prefix if TestMode was active).
+	Subject string `json:"subject"`
+	// TotalSent is the number of recipients the SendGrid API accepted.
+	TotalSent int `json:"totalSent"`
+	// TotalFailed is the number of recipients the SendGrid API rejected across all batches.
+	TotalFailed int `json:"totalFailed"`
+	// TestMode is true when this send was diverted to the configured test addresses.
+	TestMode bool `json:"testMode"`
 }
 
 // SetLastSubject stores the subject line of the most recent successful send.
@@ -94,17 +99,23 @@ func GetRuntimeTestMode() *bool {
 }
 
 // SetRuntimeTestEmails overrides the test email list from config.
+// A copy of v is stored so the caller can mutate v without affecting the
+// internal state.
 func SetRuntimeTestEmails(v []string) {
 	subjectMu.Lock()
 	defer subjectMu.Unlock()
-	runtimeTestEmails = v
+	runtimeTestEmails = append([]string(nil), v...)
 }
 
-// GetRuntimeTestEmails returns the override value, or nil if not set.
+// GetRuntimeTestEmails returns a copy of the override value, or nil if not
+// set. Callers may mutate the returned slice without affecting internal state.
 func GetRuntimeTestEmails() []string {
 	subjectMu.Lock()
 	defer subjectMu.Unlock()
-	return runtimeTestEmails
+	if runtimeTestEmails == nil {
+		return nil
+	}
+	return append([]string(nil), runtimeTestEmails...)
 }
 
 // SetRuntimeFromEmail overrides the sender email from config.
@@ -158,14 +169,16 @@ func EffectiveTestMode(cfg *config.Config) bool {
 	return cfg.TestMode
 }
 
-// EffectiveTestEmails returns the runtime override if set, else cfg.TestEmails.
+// EffectiveTestEmails returns a copy of the runtime override if set, else a
+// copy of cfg.TestEmails. Callers may mutate the returned slice without
+// affecting internal state.
 func EffectiveTestEmails(cfg *config.Config) []string {
 	subjectMu.Lock()
 	defer subjectMu.Unlock()
 	if runtimeTestEmails != nil {
-		return runtimeTestEmails
+		return append([]string(nil), runtimeTestEmails...)
 	}
-	return cfg.TestEmails
+	return append([]string(nil), cfg.TestEmails...)
 }
 
 // EffectiveFromEmail returns the runtime override if non-empty, else cfg.FromEmail.

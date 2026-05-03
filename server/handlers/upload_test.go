@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
 // createMultipartBody builds a multipart form with a single CSV file field.
@@ -19,8 +21,12 @@ func createMultipartBody(t *testing.T, fieldName, fileName, content string) (*by
 	if err != nil {
 		t.Fatalf("failed to create form file: %v", err)
 	}
-	part.Write([]byte(content))
-	writer.Close()
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write multipart body: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close multipart writer: %v", err)
+	}
 	return body, writer.FormDataContentType()
 }
 
@@ -68,6 +74,9 @@ func TestHandleUpload(t *testing.T) {
 		},
 	}
 
+	uploadCfg := &config.Config{MaxUploadSizeMB: 10}
+	handler := HandleUpload(uploadCfg)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, contentType := createMultipartBody(t, tt.fieldName, tt.fileName, tt.csv)
@@ -76,7 +85,7 @@ func TestHandleUpload(t *testing.T) {
 			req.Header.Set("Content-Type", contentType)
 
 			rr := httptest.NewRecorder()
-			HandleUpload(rr, req)
+			handler.ServeHTTP(rr, req)
 
 			if rr.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d; body: %s", rr.Code, tt.wantStatus, rr.Body.String())
@@ -134,7 +143,7 @@ func TestHandleUpload(t *testing.T) {
 }
 
 func TestHandleUpload_OversizedFile(t *testing.T) {
-	// Create a CSV larger than maxUploadSize (10 MB).
+	// Create a CSV larger than the configured limit (10 MB).
 	bigContent := "email,name\n" + strings.Repeat("user@example.com,User Name With Extra Padding To Fill Space\n", 200000)
 
 	body, contentType := createMultipartBody(t, "file", "big.csv", bigContent)
@@ -143,7 +152,8 @@ func TestHandleUpload_OversizedFile(t *testing.T) {
 	req.Header.Set("Content-Type", contentType)
 
 	rr := httptest.NewRecorder()
-	HandleUpload(rr, req)
+	cfg := &config.Config{MaxUploadSizeMB: 10}
+	HandleUpload(cfg).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d for oversized file", rr.Code, http.StatusBadRequest)

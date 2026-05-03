@@ -25,7 +25,8 @@ func generateRows(n int) string {
 	var b strings.Builder
 	b.WriteString("email,name,company\n")
 	for i := 1; i <= n; i++ {
-		fmt.Fprintf(&b, "user%d@example.com,User %d,Company%d\n", i, i, i)
+		// strings.Builder never returns an error from Write methods.
+		_, _ = fmt.Fprintf(&b, "user%d@example.com,User %d,Company%d\n", i, i, i)
 	}
 	return b.String()
 }
