@@ -1,0 +1,54 @@
+# golangci-lint configuration for sendgrid-mailer.
+# See AGENTS.md (QC) for ownership and tuning policy.
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  go: "1.23"
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # Default-on linters that catch correctness bugs:
+    - errcheck       # unchecked error returns
+    - govet          # standard go vet
+    - ineffassign    # ineffective assignments
+    - staticcheck    # large bag of correctness and style checks (incl. SA*)
+    - unused         # unused vars, funcs, types
+    # Style linters:
+    - gofmt          # canonical formatting
+    - goimports      # import grouping and organisation
+    - misspell       # English misspellings
+    # Security:
+    - gosec          # security-focused checks (hardcoded creds, weak crypto, etc.)
+
+linters-settings:
+  errcheck:
+    # Don't require checking errors from these noisy or harmless calls.
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+  gosec:
+    # G104 (unchecked errors) overlaps with errcheck — let errcheck handle it.
+    excludes:
+      - G104
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/jkmpod/sendgrid-mailer
+  misspell:
+    locale: UK   # project uses British spellings ("personalised", "behaviour")
+
+issues:
+  # Don't hide repeats — surface every finding so QC can see the full picture.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Test files relax some security checks that don't apply (test fixtures
+    # often look like hardcoded credentials but aren't real).
+    - path: _test\.go
+      linters:
+        - gosec

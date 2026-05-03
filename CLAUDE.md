@@ -31,9 +31,11 @@ go run .                 # serves on PORT (default 8080)
 | Review checklists, code style, test policy | `AGENTS.md` |
 | Recipes for adding handlers, state, SSE, tests | `DEVELOPING.md` |
 | Reusable pattern write-ups | `.claude/skills/` |
+| Subagent definitions (Architect / Developer / QC / ai-log-curator) | `.claude/agents/` |
 | Config template | `.env.example` |
 | UI (single page, vanilla JS only) | `templates/index.html` |
 | Archived session prompts (history only) | `docs/build-history.md` |
+| Metacognitive log (gitignored) | `ai-log/` |
 
 ## Ground rules (the small, durable core)
 
@@ -50,16 +52,18 @@ go run .                 # serves on PORT (default 8080)
 
 ## Doc ownership
 
-Each doc has a single owner agent. A change touching multiple docs is a
-coordination signal, not a problem to hide in one file.
+Each doc has a single owner agent (defined in `.claude/agents/`). A change
+touching multiple docs is a coordination signal, not a problem to hide in
+one file.
 
 | Doc | Owner |
 |-----|-------|
-| `CLAUDE.md`, `ARCHITECTURE.md` | Architect agent |
-| `AGENTS.md` | QC agent |
-| `DEVELOPING.md` | Developer agent |
-| `README.md` | Architect (user-facing; canonical for endpoints/env vars) |
+| `CLAUDE.md`, `ARCHITECTURE.md`, `README.md` | `architect` agent |
+| `AGENTS.md`, `.golangci.yml`, `.github/workflows/lint-security.yml` | `qc` agent |
+| `DEVELOPING.md`, Go source, `templates/index.html`, `.claude/skills/` | `developer` agent |
+| `ai-log/` artifacts | `ai-log-curator` agent |
 
 When in doubt about *which* doc a change belongs in: scope/policy/architecture
-decisions go to the Architect; review or test checks go to QC; concrete code
-recipes go to the Developer.
+decisions go to the Architect; review, test, or lint policy go to QC;
+concrete code recipes go to the Developer; session logs and ADRs go to the
+ai-log-curator.

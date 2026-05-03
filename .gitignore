@@ -82,6 +82,11 @@ learning.md
 session-tracker.md
 pr-update.md
 
-# CLAUDE settings
-.claude/
+# CLAUDE settings — track agents and skills, keep personal settings local
+.claude/*
+!.claude/agents/
+!.claude/skills/
+
+# AI metacognitive log — gitignored until publication (see ADR 002 in ai-log/adr.md)
+ai-log/
 

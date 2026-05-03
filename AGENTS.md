@@ -22,7 +22,12 @@ etc.) that review pull requests on this repository.
 - **Tidy:** `go mod tidy`
 - **Build:** `go build -o main .`
 - **Vet:** `go vet ./...`
+- **Lint:** `golangci-lint run` (config in `.golangci.yml`)
+- **Vuln scan:** `govulncheck ./...`
 - **Test:** `go test ./... -v`
+
+The lint and security gates run in CI via
+`.github/workflows/lint-security.yml` on every PR and master push.
 
 ## Standard library only
 
