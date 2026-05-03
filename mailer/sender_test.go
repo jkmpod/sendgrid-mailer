@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -214,8 +215,12 @@ func TestSendTest_SubjectPrefix(t *testing.T) {
 	// Verify the subject sent to SendGrid is prefixed with "[TEST] ".
 	var capturedBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
+		buf, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		capturedBody = buf
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -251,8 +256,12 @@ func TestSendTest_OnlyTestRecipients(t *testing.T) {
 	// NOT the original recipient's email.
 	var capturedBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
+		buf, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		capturedBody = buf
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -282,8 +291,12 @@ func TestSendTest_OnlyTestRecipients(t *testing.T) {
 func TestSendBulk_CategoriesForwarded(t *testing.T) {
 	var capturedBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
+		buf, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		capturedBody = buf
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -324,8 +337,12 @@ func TestSendBulk_CategoriesForwarded(t *testing.T) {
 func TestSendTest_CategoriesForwarded(t *testing.T) {
 	var capturedBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
+		buf, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		capturedBody = buf
 		w.WriteHeader(http.StatusAccepted)
 	}))

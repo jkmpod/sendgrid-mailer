@@ -36,10 +36,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Go
+      # govulncheck@latest now requires Go >= 1.25 to install. The project
+      # itself is on Go 1.23 (per go.mod) — that's fine, the tool scans
+      # backwards-compatibly. We use 'stable' here just for the install.
+      - name: Set up Go (stable, for govulncheck install)
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: stable
           cache: true
 
       - name: Install govulncheck
