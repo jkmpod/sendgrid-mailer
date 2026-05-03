@@ -10,13 +10,15 @@ import (
 
 // Emailer holds configuration and the SendGrid client needed to send emails.
 type Emailer struct {
+	// MaxBatchSize caps recipients per outbound SendGrid call.
 	MaxBatchSize int
-	RateDelayMS  int
-	mu           sync.Mutex // guards fromEmail, fromName, and client
-	apiKey       string
-	fromEmail    string
-	fromName     string
-	client       *sendgrid.Client
+	// RateDelayMS is the inter-batch sleep in milliseconds.
+	RateDelayMS int
+	mu          sync.Mutex // guards fromEmail, fromName, and client
+	apiKey      string
+	fromEmail   string
+	fromName    string
+	client      *sendgrid.Client
 }
 
 // SetFrom updates the sender address at runtime. Thread-safe.

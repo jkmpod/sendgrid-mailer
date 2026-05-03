@@ -13,15 +13,20 @@ import (
 
 // BatchError records a failure for a specific batch during bulk sending.
 type BatchError struct {
+	// BatchIndex is the zero-based position of the failed batch within the bulk send.
 	BatchIndex int
-	Err        error
+	// Err is the underlying error returned by SendBatch for this batch.
+	Err error
 }
 
 // SendResult summarises the outcome of a bulk send operation.
 // Partial success is expected — check BatchErrors for per-batch details.
 type SendResult struct {
-	TotalSent   int
+	// TotalSent is the count of recipients across batches that the SendGrid API accepted.
+	TotalSent int
+	// TotalFailed is the count of recipients across batches that the SendGrid API rejected.
 	TotalFailed int
+	// BatchErrors lists the per-batch failures encountered during the send.
 	BatchErrors []BatchError
 }
 

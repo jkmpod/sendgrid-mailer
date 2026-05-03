@@ -27,11 +27,16 @@ var (
 // SendLogEntry records the outcome of a single send operation.
 // Stored in memory only — lost on restart.
 type SendLogEntry struct {
-	Time        time.Time `json:"time"`
-	Subject     string    `json:"subject"`
-	TotalSent   int       `json:"totalSent"`
-	TotalFailed int       `json:"totalFailed"`
-	TestMode    bool      `json:"testMode"`
+	// Time is the wall-clock time at which the send completed.
+	Time time.Time `json:"time"`
+	// Subject is the subject line as submitted (with the [TEST] prefix if TestMode was active).
+	Subject string `json:"subject"`
+	// TotalSent is the number of recipients the SendGrid API accepted.
+	TotalSent int `json:"totalSent"`
+	// TotalFailed is the number of recipients the SendGrid API rejected across all batches.
+	TotalFailed int `json:"totalFailed"`
+	// TestMode is true when this send was diverted to the configured test addresses.
+	TestMode bool `json:"testMode"`
 }
 
 // SetLastSubject stores the subject line of the most recent successful send.
