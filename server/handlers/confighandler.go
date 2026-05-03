@@ -39,6 +39,8 @@ type configUpdateRequest struct {
 // on app restart.
 func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
 		var req configUpdateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{

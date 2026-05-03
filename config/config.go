@@ -9,14 +9,16 @@ import (
 
 // Config holds all application configuration read from environment variables.
 type Config struct {
-	APIKey       string
-	FromEmail    string
-	FromName     string
-	MaxBatchSize int
-	RateDelayMS  int
-	TestMode     bool
-	TestEmails   []string
-	Port         string
+	APIKey          string
+	FromEmail       string
+	FromName        string
+	MaxBatchSize    int
+	RateDelayMS     int
+	TestMode        bool
+	TestEmails      []string
+	Port            string
+	MessagesURL     string
+	MaxUploadSizeMB int
 }
 
 // Load reads configuration from environment variables and returns a populated
@@ -80,14 +82,30 @@ func Load() (*Config, error) {
 		port = "8080"
 	}
 
+	messagesURL := os.Getenv("SENDGRID_MESSAGES_URL")
+	if messagesURL == "" {
+		messagesURL = "https://api.sendgrid.com/v3/messages"
+	}
+
+	maxUploadSizeMB := 10
+	if v := strings.TrimSpace(os.Getenv("MAX_UPLOAD_SIZE_MB")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("MAX_UPLOAD_SIZE_MB must be a valid integer: %w", err)
+		}
+		maxUploadSizeMB = n
+	}
+
 	return &Config{
-		APIKey:       apiKey,
-		FromEmail:    fromEmail,
-		FromName:     fromName,
-		MaxBatchSize: maxBatchSize,
-		RateDelayMS:  rateDelayMS,
-		TestMode:     testMode,
-		TestEmails:   testEmails,
-		Port:         port,
+		APIKey:          apiKey,
+		FromEmail:       fromEmail,
+		FromName:        fromName,
+		MaxBatchSize:    maxBatchSize,
+		RateDelayMS:     rateDelayMS,
+		TestMode:        testMode,
+		TestEmails:      testEmails,
+		Port:            port,
+		MessagesURL:     messagesURL,
+		MaxUploadSizeMB: maxUploadSizeMB,
 	}, nil
 }

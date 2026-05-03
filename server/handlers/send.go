@@ -23,6 +23,11 @@ type sendRequest struct {
 	Categories []string `json:"categories"`
 }
 
+const (
+	maxCategories     = 10
+	maxCategoryLength = 255
+)
+
 // validateCategories trims whitespace, drops empty entries, deduplicates
 // (preserving first-occurrence order), and enforces SendGrid's documented
 // limits: no entry may exceed 255 characters and the resulting slice may
@@ -35,16 +40,16 @@ func validateCategories(in []string) ([]string, error) {
 		if s == "" {
 			continue
 		}
-		if len(s) > 255 {
-			return nil, fmt.Errorf("category %q exceeds 255 characters", s)
+		if len(s) > maxCategoryLength {
+			return nil, fmt.Errorf("category %q exceeds %d characters", s, maxCategoryLength)
 		}
 		if !seen[s] {
 			seen[s] = true
 			out = append(out, s)
 		}
 	}
-	if len(out) > 10 {
-		return nil, fmt.Errorf("too many categories: %d provided, maximum is 10", len(out))
+	if len(out) > maxCategories {
+		return nil, fmt.Errorf("too many categories: %d provided, maximum is %d", len(out), maxCategories)
 	}
 	return out, nil
 }
@@ -56,6 +61,8 @@ func validateCategories(in []string) ([]string, error) {
 // cfg.TestEmails using the first CSV row for personalisation.
 func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
 		var req sendRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{

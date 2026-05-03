@@ -3,9 +3,10 @@ package main
 import (
 	"log"
 
+	"github.com/joho/godotenv"
+
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/server"
-	"github.com/joho/godotenv"
 )
 
 func main() {

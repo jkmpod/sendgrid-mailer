@@ -27,9 +27,9 @@ func NewServer(cfg *config.Config) *Server {
 	}
 
 	srv.mux.HandleFunc("GET /", srv.handleIndex)
-	srv.mux.HandleFunc("POST /upload", handlers.HandleUpload)
+	srv.mux.HandleFunc("POST /upload", handlers.HandleUpload(cfg))
 	srv.mux.HandleFunc("POST /send", handlers.HandleSend(e, cfg))
-	srv.mux.HandleFunc("GET /logs", handlers.HandleLogs(cfg.APIKey))
+	srv.mux.HandleFunc("GET /logs", handlers.HandleLogs(cfg.APIKey, cfg.MessagesURL))
 	srv.mux.HandleFunc("GET /compose", handlers.HandleCompose)
 	srv.mux.HandleFunc("GET /config", handlers.HandleConfig(cfg))
 	srv.mux.HandleFunc("POST /config", handlers.HandleConfigUpdate(e, cfg))
