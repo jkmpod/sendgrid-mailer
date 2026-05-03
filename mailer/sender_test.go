@@ -60,7 +60,7 @@ func TestSendBulk(t *testing.T) {
 					callCount++
 					if callCount == 2 {
 						w.WriteHeader(http.StatusBadRequest)
-						w.Write([]byte(`{"errors":[{"message":"bad request"}]}`))
+						_, _ = w.Write([]byte(`{"errors":[{"message":"bad request"}]}`))
 						return
 					}
 					w.WriteHeader(http.StatusAccepted)
@@ -76,7 +76,7 @@ func TestSendBulk(t *testing.T) {
 			batchSize:      2,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`{"errors":[{"message":"server error"}]}`))
+				_, _ = w.Write([]byte(`{"errors":[{"message":"server error"}]}`))
 			},
 			wantSent:   0,
 			wantFailed: 4,
@@ -157,7 +157,7 @@ func TestSendTest(t *testing.T) {
 			testEmails: []string{"tester@x.com"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`{"errors":[{"message":"server error"}]}`))
+				_, _ = w.Write([]byte(`{"errors":[{"message":"server error"}]}`))
 			},
 			wantSent:   0,
 			wantFailed: 1,
