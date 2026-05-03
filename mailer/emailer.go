@@ -3,8 +3,9 @@ package mailer
 import (
 	"sync"
 
-	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/sendgrid/sendgrid-go"
+
+	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
 // Emailer holds configuration and the SendGrid client needed to send emails.

@@ -6,8 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // BatchError records a failure for a specific batch during bulk sending.

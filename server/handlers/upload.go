@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -118,6 +119,6 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		// Too late to change the status code, but we can log the error.
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("[handlers] failed to encode JSON response: %v", err)
 	}
 }

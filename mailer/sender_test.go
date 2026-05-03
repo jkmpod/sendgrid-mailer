@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sendgrid/sendgrid-go"
+
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/models"
-	"github.com/sendgrid/sendgrid-go"
 )
 
 // newTestEmailer creates an Emailer whose SendGrid client points at the given
