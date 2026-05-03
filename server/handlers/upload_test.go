@@ -19,7 +19,9 @@ func createMultipartBody(t *testing.T, fieldName, fileName, content string) (*by
 	if err != nil {
 		t.Fatalf("failed to create form file: %v", err)
 	}
-	part.Write([]byte(content))
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write content to part: %v", err)
+	}
 	writer.Close()
 	return body, writer.FormDataContentType()
 }
