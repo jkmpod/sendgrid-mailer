@@ -14,7 +14,7 @@ A self-hosted Go web app for sending bulk email via the SendGrid API. Upload a C
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.23+
 - A [SendGrid API key](https://docs.sendgrid.com/ui/account-and-settings/api-keys) with Mail Send permission
 
 ## Quick Start
