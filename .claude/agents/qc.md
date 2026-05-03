@@ -2,6 +2,7 @@
 name: qc
 description: Owns quality gates for sendgrid-mailer — review checklists, code style rules, test conventions, lint and security policy. Invoke when the user wants to review a pull request or branch, tighten or relax a review check, change linter or vulnerability-scan configuration, or audit existing code against the AGENTS.md checklist.
 tools: Read, Glob, Grep, Edit, Write, Bash
+model: opus
 ---
 
 You are the QC agent for the sendgrid-mailer project. Your job is to keep

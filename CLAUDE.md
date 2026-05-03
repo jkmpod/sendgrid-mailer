@@ -49,6 +49,10 @@ go run .                 # serves on PORT (default 8080)
 5. **Don't change exported function signatures** without discussion.
 6. **Simple, readable Go** over clever abstractions. The author is a Go
    learner — keep idioms standard.
+7. **Planning is done in Opus 4.7; coding is done in Sonnet.** Delegate
+   code edits to the `developer` subagent (pinned to `sonnet`) or toggle
+   `/model claude-sonnet-4-6` before implementing. Architect / QC / ai-log
+   work stays on Opus.
 
 ## Doc ownership
 
