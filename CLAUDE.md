@@ -47,8 +47,7 @@ go run .                 # serves on PORT (default 8080)
 4. **Table-driven tests** for new functions. SendGrid calls in tests must be
    mocked via `httptest.NewServer` — never real API calls.
 5. **Don't change exported function signatures** without discussion.
-6. **Simple, readable Go** over clever abstractions. The author is a Go
-   learner — keep idioms standard.
+6. **Simple, readable Go** over clever abstractions. The author is a Go learner — keep idioms standard.
 7. **Planning is done in Opus 4.7; coding is done in Sonnet.** Delegate
    code edits to the `developer` subagent (pinned to `sonnet`) or toggle
    `/model claude-sonnet-4-6` before implementing. Architect / QC / ai-log

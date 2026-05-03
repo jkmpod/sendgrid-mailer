@@ -12,7 +12,7 @@ import (
 type Emailer struct {
 	MaxBatchSize int
 	RateDelayMS  int
-	mu           sync.Mutex // guards fromEmail, fromName
+	mu           sync.Mutex // guards fromEmail, fromName, and client
 	apiKey       string
 	fromEmail    string
 	fromName     string
@@ -32,6 +32,16 @@ func (e *Emailer) GetFrom() (email, name string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.fromEmail, e.fromName
+}
+
+// SetBaseURL redirects the SendGrid client to the given base URL. Intended
+// for tests that point the client at httptest.NewServer; not for production
+// use. Thread-safe.
+func (e *Emailer) SetBaseURL(baseURL string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	req := sendgrid.GetRequest(e.apiKey, "/v3/mail/send", baseURL)
+	e.client = &sendgrid.Client{Request: req}
 }
 
 // NewEmailer creates an Emailer from application config. It initialises the

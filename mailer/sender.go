@@ -44,7 +44,11 @@ func (e *Emailer) SendBatch(
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
-	resp, err := e.client.Send(msg)
+	e.mu.Lock()
+	client := e.client
+	e.mu.Unlock()
+
+	resp, err := client.Send(msg)
 	if err != nil {
 		log.Printf("[mailer] SendBatch: API request failed: %v", err)
 		return nil, fmt.Errorf("SendGrid API request failed: %w", err)

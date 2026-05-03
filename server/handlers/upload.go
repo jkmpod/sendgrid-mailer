@@ -20,10 +20,9 @@ import (
 // maximum upload size is taken from cfg.MaxUploadSizeMB.
 func HandleUpload(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-
 		maxBytes := int64(cfg.MaxUploadSizeMB) << 20
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		defer r.Body.Close()
 
 		if err := r.ParseMultipartForm(maxBytes); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{

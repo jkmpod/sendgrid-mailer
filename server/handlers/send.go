@@ -260,6 +260,12 @@ func sendResultToJSON(sr mailer.SendResult) map[string]interface{} {
 
 // sseEvent writes a single Server-Sent Event to the response.
 func sseEvent(w http.ResponseWriter, event string, data interface{}) {
-	jsonData, _ := json.Marshal(data)
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("[send] sseEvent: marshal failed: %v", err)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData); err != nil {
+		log.Printf("[send] sseEvent: write failed: %v", err)
+	}
 }

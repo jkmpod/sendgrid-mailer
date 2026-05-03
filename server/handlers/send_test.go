@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
@@ -79,6 +80,7 @@ func TestHandleSend(t *testing.T) {
 		TestMode:     false,
 	}
 	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
 	handler := HandleSend(e, cfg)
 	ResetRuntimeConfig()
 
@@ -112,13 +114,12 @@ func TestHandleSend(t *testing.T) {
 }
 
 func TestHandleSend_ValidRequest(t *testing.T) {
-	// Set up a mock SendGrid API server.
+	// Mock SendGrid returns 202 Accepted for all requests.
 	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer sgServer.Close()
 
-	// Create a temp CSV file.
 	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\nbob@example.com,Bob\n")
 
 	cfg := &config.Config{
@@ -129,11 +130,8 @@ func TestHandleSend_ValidRequest(t *testing.T) {
 		RateDelayMS:  0,
 	}
 	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
 
-	// We can't redirect the unexported client to the mock server from this
-	// package. So we test that the handler correctly validates input and
-	// calls SendBulk. The actual SendGrid call will fail (wrong URL), which
-	// exercises the partial-failure path.
 	body := `{"subject":"Hello","template":"<p>Hi {{.Name}}</p>","filePath":"` + strings.ReplaceAll(csvPath, `\`, `\\`) + `"}`
 
 	req := httptest.NewRequest("POST", "/send", strings.NewReader(body))
@@ -143,37 +141,51 @@ func TestHandleSend_ValidRequest(t *testing.T) {
 	handler := HandleSend(e, cfg)
 	handler.ServeHTTP(rr, req)
 
-	// The handler should return SSE events (text/event-stream) or JSON.
-	// Since the real SendGrid API won't be reached, we expect batch failures
-	// streamed via SSE — which still means a 200 status (SSE always starts 200).
+	responseBody := rr.Body.String()
+
 	ct := rr.Header().Get("Content-Type")
 	if !strings.Contains(ct, "text/event-stream") && !strings.Contains(ct, "application/json") {
 		t.Errorf("Content-Type = %q, want text/event-stream or application/json", ct)
 	}
 
-	// The response body should contain a "done" event with totalFailed > 0
-	// (since the mock SendGrid URL isn't wired to the emailer's client).
-	responseBody := rr.Body.String()
-	if !strings.Contains(responseBody, "done") && !strings.Contains(responseBody, "totalFailed") {
-		t.Logf("Response body: %s", responseBody)
-		// Not a hard failure — the important thing is the handler didn't panic
-		// and returned a response.
+	// With the mock server wired in, all 2 recipients succeed.
+	// Expect a "done" event with totalSent=2 and totalFailed=0.
+	if !strings.Contains(responseBody, "done") {
+		t.Errorf("expected 'done' event in response; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, `"totalSent":2`) {
+		t.Errorf("expected totalSent:2 in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, `"totalFailed":0`) {
+		t.Errorf("expected totalFailed:0 in done event; got: %s", responseBody)
 	}
 }
 
 func TestHandleSend_PartialFailure(t *testing.T) {
-	// This test verifies that when some batches fail, the handler still
-	// returns results for all batches (partial success).
+	// Mock server returns 202 on the first POST and 500 on the second.
+	var callCount int32
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
+	// 3 recipients with batch size 2 → 2 batches: [alice, bob] and [charlie].
 	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\nbob@example.com,Bob\ncharlie@example.com,Charlie\n")
 
 	cfg := &config.Config{
 		APIKey:       "SG.test-key",
 		FromEmail:    "test@example.com",
 		FromName:     "Test",
-		MaxBatchSize: 2, // 2 batches: [alice, bob] and [charlie]
+		MaxBatchSize: 2,
 		RateDelayMS:  0,
 	}
 	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
 
 	body := `{"subject":"Hello","template":"<p>Hi {{.Name}}</p>","filePath":"` + strings.ReplaceAll(csvPath, `\`, `\\`) + `"}`
 
@@ -184,21 +196,24 @@ func TestHandleSend_PartialFailure(t *testing.T) {
 	handler := HandleSend(e, cfg)
 	handler.ServeHTTP(rr, req)
 
-	// The handler should produce SSE events. Since the Emailer's client
-	// points at the real SendGrid (which we can't reach), all batches will
-	// fail. The key assertion is: the handler processes ALL batches, not
-	// just the first one.
 	responseBody := rr.Body.String()
 
-	// We expect events for batch 1 and batch 2.
+	// Batch 1 (alice+bob) succeeds; batch 2 (charlie) fails.
 	if !strings.Contains(responseBody, `"batch":1`) {
-		t.Errorf("expected batch 1 event in response")
+		t.Errorf("expected batch 1 event; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, `"batch":2`) {
-		t.Errorf("expected batch 2 event in response")
+		t.Errorf("expected batch 2 event; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, "done") {
-		t.Errorf("expected 'done' event in response")
+		t.Errorf("expected 'done' event; got: %s", responseBody)
+	}
+	// Batch 1 ok → totalSent=2; batch 2 failed → totalFailed=1.
+	if !strings.Contains(responseBody, `"totalSent":2`) {
+		t.Errorf("expected totalSent:2 in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, `"totalFailed":1`) {
+		t.Errorf("expected totalFailed:1 in done event; got: %s", responseBody)
 	}
 }
 
@@ -341,6 +356,12 @@ func TestHandleSend_Categories(t *testing.T) {
 		},
 	}
 
+	// Mock SendGrid returns 202 for valid requests.
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
 	cfg := &config.Config{
 		APIKey:       "SG.test-key",
 		FromEmail:    "test@example.com",
@@ -350,6 +371,7 @@ func TestHandleSend_Categories(t *testing.T) {
 		TestMode:     false,
 	}
 	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
 	handler := HandleSend(e, cfg)
 	ResetRuntimeConfig()
 
@@ -395,10 +417,13 @@ func TestHandleSend_Categories(t *testing.T) {
 }
 
 func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
-	// Clear any previous state.
 	SetLastSubject("")
 
-	// Create a temp CSV.
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
 	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\n")
 
 	cfg := &config.Config{
@@ -409,6 +434,7 @@ func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
 		RateDelayMS:  0,
 	}
 	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
 
 	body := `{"subject":"Success Subject","template":"<p>Hi {{.Name}}</p>","filePath":"` + strings.ReplaceAll(csvPath, `\`, `\\`) + `"}`
 	req := httptest.NewRequest("POST", "/send", strings.NewReader(body))
@@ -418,12 +444,49 @@ func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
 	handler := HandleSend(e, cfg)
 	handler.ServeHTTP(rr, req)
 
-	// The handler will attempt to send via SendGrid which will fail (client
-	// points at real API). All batches fail, so totalSent = 0, meaning
-	// lastSubject should NOT be updated. This validates the "only on success"
-	// guard. We verify this by checking it remains empty.
+	_ = rr // response used for side-effects
+
+	// Mock returns 202, so totalSent=1 → lastSubject should be updated.
 	got := GetLastSubject()
-	if got != "" {
-		t.Errorf("GetLastSubject() = %q, want empty (all batches failed, totalSent=0)", got)
+	if got != "Success Subject" {
+		t.Errorf("GetLastSubject() = %q, want %q", got, "Success Subject")
+	}
+}
+
+func TestHandleSend_LastSubjectNotUpdatedOnAllFailure(t *testing.T) {
+	SetLastSubject("previous subject")
+
+	// Mock SendGrid always returns 500.
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer sgServer.Close()
+
+	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\n")
+
+	cfg := &config.Config{
+		APIKey:       "SG.test-key",
+		FromEmail:    "test@example.com",
+		FromName:     "Test",
+		MaxBatchSize: 1000,
+		RateDelayMS:  0,
+	}
+	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
+
+	body := `{"subject":"Failing Subject","template":"<p>Hi {{.Name}}</p>","filePath":"` + strings.ReplaceAll(csvPath, `\`, `\\`) + `"}`
+	req := httptest.NewRequest("POST", "/send", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	handler := HandleSend(e, cfg)
+	handler.ServeHTTP(rr, req)
+
+	_ = rr
+
+	// All batches fail (500), so totalSent=0 → lastSubject must not change.
+	got := GetLastSubject()
+	if got != "previous subject" {
+		t.Errorf("GetLastSubject() = %q, want %q (should not update when totalSent=0)", got, "previous subject")
 	}
 }

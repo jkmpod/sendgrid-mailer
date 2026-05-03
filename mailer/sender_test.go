@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sendgrid/sendgrid-go"
-
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/models"
 )
@@ -25,12 +23,7 @@ func newTestEmailer(serverURL string, batchSize int) *Emailer {
 		RateDelayMS:  0, // no delay in tests
 	}
 	e := NewEmailer(cfg)
-
-	// Replace the client's base URL with our test server.
-	req := sendgrid.GetRequest("SG.test-key", "/v3/mail/send", serverURL)
-	req.Method = "POST"
-	e.client = &sendgrid.Client{Request: req}
-
+	e.SetBaseURL(serverURL)
 	return e
 }
 
