@@ -6,8 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // BatchError records a failure for a specific batch during bulk sending.
@@ -19,9 +20,9 @@ type BatchError struct {
 // SendResult summarises the outcome of a bulk send operation.
 // Partial success is expected — check BatchErrors for per-batch details.
 type SendResult struct {
-	TotalSent    int
-	TotalFailed  int
-	BatchErrors  []BatchError
+	TotalSent   int
+	TotalFailed int
+	BatchErrors []BatchError
 }
 
 // SendBatch sends a single batch of recipients. It builds the mail message,

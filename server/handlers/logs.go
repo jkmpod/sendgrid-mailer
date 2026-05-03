@@ -109,6 +109,8 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			log.Printf("[logs] failed to stream response body to client: %v", err)
+		}
 	}
 }

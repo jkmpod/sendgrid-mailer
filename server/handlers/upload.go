@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -112,9 +113,12 @@ func previewRows(recipients []models.EmailRecipient, n int) []map[string]string 
 }
 
 // writeJSON is a helper that sets the Content-Type header and writes a JSON
-// response with the given status code.
+// response with the given status code. An encoding failure is logged — by the
+// time we hit it, the status line is already on the wire so we can't recover.
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("[handlers] writeJSON encode failed: %v", err)
+	}
 }

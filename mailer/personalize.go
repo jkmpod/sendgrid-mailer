@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // BuildMail constructs an SGMailV3 message with one Personalization per

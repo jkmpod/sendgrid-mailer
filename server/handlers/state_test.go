@@ -14,10 +14,10 @@ func TestSetGetLastSubject(t *testing.T) {
 	SetLastSubject("")
 
 	tests := []struct {
-		name     string
-		setVal   string
-		wantVal  string
-		skipSet  bool // if true, don't call SetLastSubject
+		name    string
+		setVal  string
+		wantVal string
+		skipSet bool // if true, don't call SetLastSubject
 	}{
 		{
 			name:    "default value is empty string",
@@ -146,10 +146,10 @@ func TestSetGetLastSubject_Concurrent(t *testing.T) {
 
 func TestRuntimeConfig(t *testing.T) {
 	cfg := &config.Config{
-		TestMode:  true,
+		TestMode:   true,
 		TestEmails: []string{"default@example.com"},
-		FromEmail: "default@example.com",
-		FromName:  "Default Sender",
+		FromEmail:  "default@example.com",
+		FromName:   "Default Sender",
 	}
 
 	t.Run("defaults when no override set", func(t *testing.T) {

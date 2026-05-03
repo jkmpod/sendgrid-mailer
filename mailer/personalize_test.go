@@ -3,8 +3,9 @@ package mailer
 import (
 	"testing"
 
-	"github.com/jkmpod/sendgrid-mailer/models"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+
+	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 func TestBuildMail_Categories(t *testing.T) {

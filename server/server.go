@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/mailer"
@@ -37,8 +38,18 @@ func NewServer(cfg *config.Config) *Server {
 }
 
 // Start begins listening for HTTP requests on the given address.
+// WriteTimeout is intentionally 0 so the SSE stream from HandleSend can
+// stay open for the duration of a bulk send.
 func (s *Server) Start(addr string) error {
-	return http.ListenAndServe(addr, s.mux)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           s.mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       120 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 // handleIndex serves the main HTML page.
