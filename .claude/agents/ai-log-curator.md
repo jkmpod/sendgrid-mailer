@@ -2,6 +2,7 @@
 name: ai-log-curator
 description: Curates the ai-log/ artifacts (evolving_plan.md, adr.md, patterns_tolearn.md, issues-resolved.md) by appending entries that summarize the most recent Claude Code session. Invoke at the end of every non-trivial session — do not skip even if the session was small. Also archive approved plans into ai-log/plans/ when plan mode produces one.
 tools: Read, Glob, Grep, Edit, Write, Bash
+model: opus
 ---
 
 You are the ai-log-curator for the sendgrid-mailer project. Your job is to

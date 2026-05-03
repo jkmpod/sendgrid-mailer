@@ -342,6 +342,12 @@
       letter-spacing: 0.03em;
       margin-bottom: 0.75rem;
     }
+
+    .hint {
+      font-weight: 400;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
@@ -423,6 +429,12 @@
     <div class="field-group">
       <label for="bcc-input">BCC (comma-separated)</label>
       <input type="text" id="bcc-input" placeholder="bcc1@example.com">
+    </div>
+
+    <!-- Categories -->
+    <div class="field-group">
+      <label for="categories">Categories <span class="hint">(comma-separated, optional)</span></label>
+      <input type="text" id="categories" placeholder="e.g. newsletter, march-2026">
     </div>
 
     <button class="btn-primary" id="send-btn" type="button" disabled>Send Email</button>
@@ -805,13 +817,15 @@
 
     var cc = ccInput.value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
     var bcc = bccInput.value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    var categories = document.getElementById("categories").value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
 
     const body = JSON.stringify({
       subject: subject,
       template: template,
       filePath: uploadData.filePath,
       cc: cc.length > 0 ? cc : undefined,
-      bcc: bcc.length > 0 ? bcc : undefined
+      bcc: bcc.length > 0 ? bcc : undefined,
+      categories: categories.length > 0 ? categories : undefined
     });
 
     // Use EventSource-like approach with fetch for POST + SSE

@@ -97,7 +97,7 @@ func TestSendBulk(t *testing.T) {
 			e := newTestEmailer(server.URL, tt.batchSize)
 			recipients := makeRecipients(tt.recipientCount)
 
-			result, err := e.SendBulk(recipients, "Test Subject", simpleTemplate, nil, nil)
+			result, err := e.SendBulk(recipients, "Test Subject", simpleTemplate, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("unexpected top-level error: %v", err)
 			}
@@ -185,7 +185,7 @@ func TestSendTest(t *testing.T) {
 
 			e := newTestEmailer(server.URL, 1000)
 
-			result, err := e.SendTest(tt.testEmails, "Hello", "<p>Hi {{.Name}}</p>", firstRecipient, nil, nil)
+			result, err := e.SendTest(tt.testEmails, "Hello", "<p>Hi {{.Name}}</p>", firstRecipient, nil, nil, nil)
 
 			if tt.wantTopErr != "" {
 				if err == nil {
@@ -227,7 +227,7 @@ func TestSendTest_SubjectPrefix(t *testing.T) {
 		Name:  "Alice",
 	}
 
-	_, err := e.SendTest([]string{"tester@x.com"}, "Welcome", "<p>Hi</p>", firstRecipient, nil, nil)
+	_, err := e.SendTest([]string{"tester@x.com"}, "Welcome", "<p>Hi</p>", firstRecipient, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestSendTest_OnlyTestRecipients(t *testing.T) {
 		CustomFields: map[string]string{"company": "Acme"},
 	}
 
-	_, err := e.SendTest([]string{"tester@x.com"}, "Hi", "<p>Hello</p>", firstRecipient, nil, nil)
+	_, err := e.SendTest([]string{"tester@x.com"}, "Hi", "<p>Hello</p>", firstRecipient, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,5 +276,84 @@ func TestSendTest_OnlyTestRecipients(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, "tester@x.com") {
 		t.Error("request body does not contain test email address")
+	}
+}
+
+func TestSendBulk_CategoriesForwarded(t *testing.T) {
+	var capturedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, r.ContentLength)
+		r.Body.Read(buf)
+		capturedBody = buf
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipients := makeRecipients(1)
+
+	wantCategories := []string{"newsletter", "spring-2026"}
+	_, err := e.SendBulk(recipients, "Test Subject", "<p>Hi {{.Name}}</p>", nil, nil, wantCategories)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("failed to parse captured request body: %v", err)
+	}
+
+	raw, ok := payload["categories"]
+	if !ok {
+		t.Fatal("expected 'categories' field in request body, not found")
+	}
+	cats, ok := raw.([]interface{})
+	if !ok {
+		t.Fatalf("expected categories to be array, got %T", raw)
+	}
+	if len(cats) != len(wantCategories) {
+		t.Fatalf("len(categories) = %d, want %d", len(cats), len(wantCategories))
+	}
+	for i, want := range wantCategories {
+		if cats[i].(string) != want {
+			t.Errorf("categories[%d] = %q, want %q", i, cats[i], want)
+		}
+	}
+}
+
+func TestSendTest_CategoriesForwarded(t *testing.T) {
+	var capturedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, r.ContentLength)
+		r.Body.Read(buf)
+		capturedBody = buf
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	firstRecipient := models.EmailRecipient{Email: "original@example.com", Name: "Alice"}
+
+	wantCategories := []string{"test-category"}
+	_, err := e.SendTest([]string{"tester@x.com"}, "Hi", "<p>Hello</p>", firstRecipient, nil, nil, wantCategories)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("failed to parse captured request body: %v", err)
+	}
+
+	raw, ok := payload["categories"]
+	if !ok {
+		t.Fatal("expected 'categories' field in request body, not found")
+	}
+	cats, ok := raw.([]interface{})
+	if !ok {
+		t.Fatalf("expected categories to be array, got %T", raw)
+	}
+	if len(cats) != 1 || cats[0].(string) != "test-category" {
+		t.Errorf("categories = %v, want [test-category]", cats)
 	}
 }
