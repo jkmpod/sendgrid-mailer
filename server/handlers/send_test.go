@@ -232,6 +232,168 @@ func TestHandleSend_LastSubjectNotUpdatedOnFailure(t *testing.T) {
 	}
 }
 
+func TestValidateCategories(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      []string
+		wantOut    []string
+		wantErrSub string // non-empty means expect an error containing this substring
+	}{
+		{
+			name:    "nil input returns empty slice",
+			input:   nil,
+			wantOut: []string{},
+		},
+		{
+			name:    "empty input returns empty slice",
+			input:   []string{},
+			wantOut: []string{},
+		},
+		{
+			name:    "single valid category",
+			input:   []string{"newsletter"},
+			wantOut: []string{"newsletter"},
+		},
+		{
+			name:    "whitespace is trimmed",
+			input:   []string{"  newsletter  ", " march-2026 "},
+			wantOut: []string{"newsletter", "march-2026"},
+		},
+		{
+			name:    "empty entries are dropped",
+			input:   []string{"a", "", "  ", "b"},
+			wantOut: []string{"a", "b"},
+		},
+		{
+			name:    "duplicates are deduped preserving first occurrence",
+			input:   []string{"a", "a", "b"},
+			wantOut: []string{"a", "b"},
+		},
+		{
+			name:       "category exceeding 255 chars returns error",
+			input:      []string{strings.Repeat("x", 256)},
+			wantErrSub: "exceeds 255 characters",
+		},
+		{
+			name:       "more than 10 categories returns error",
+			input:      []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+			wantErrSub: "maximum is 10",
+		},
+		{
+			name:    "exactly 10 categories is valid",
+			input:   []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+			wantOut: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := validateCategories(tt.input)
+			if tt.wantErrSub != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErrSub)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrSub) {
+					t.Errorf("error = %q, want substring %q", err.Error(), tt.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(out) != len(tt.wantOut) {
+				t.Fatalf("len(out) = %d, want %d; got %v", len(out), len(tt.wantOut), out)
+			}
+			for i, want := range tt.wantOut {
+				if out[i] != want {
+					t.Errorf("out[%d] = %q, want %q", i, out[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleSend_Categories(t *testing.T) {
+	csvContent := "email,name\nalice@example.com,Alice\n"
+
+	tests := []struct {
+		name       string
+		categories interface{} // included in the JSON body
+		wantStatus int
+		wantErrSub string
+	}{
+		{
+			name:       "valid single category returns 200",
+			categories: []string{"newsletter"},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "11 categories returns 400",
+			categories: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+			wantStatus: http.StatusBadRequest,
+			wantErrSub: "maximum is 10",
+		},
+		{
+			name:       "256-char category returns 400",
+			categories: []string{strings.Repeat("x", 256)},
+			wantStatus: http.StatusBadRequest,
+			wantErrSub: "exceeds 255 characters",
+		},
+	}
+
+	cfg := &config.Config{
+		APIKey:       "SG.test-key",
+		FromEmail:    "test@example.com",
+		FromName:     "Test",
+		MaxBatchSize: 1000,
+		RateDelayMS:  0,
+		TestMode:     false,
+	}
+	e := mailer.NewEmailer(cfg)
+	handler := HandleSend(e, cfg)
+	ResetRuntimeConfig()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csvPath := writeTempCSV(t, csvContent)
+
+			type reqBody struct {
+				Subject    string      `json:"subject"`
+				Template   string      `json:"template"`
+				FilePath   string      `json:"filePath"`
+				Categories interface{} `json:"categories,omitempty"`
+			}
+			rb := reqBody{
+				Subject:    "Hello",
+				Template:   "<p>Hi {{.Name}}</p>",
+				FilePath:   csvPath,
+				Categories: tt.categories,
+			}
+			bodyBytes, _ := json.Marshal(rb)
+
+			req := httptest.NewRequest("POST", "/send", strings.NewReader(string(bodyBytes)))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if tt.wantErrSub != "" {
+				var resp map[string]interface{}
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to parse response: %v", err)
+				}
+				errMsg, _ := resp["error"].(string)
+				if !strings.Contains(errMsg, tt.wantErrSub) {
+					t.Errorf("error = %q, want substring %q", errMsg, tt.wantErrSub)
+				}
+			}
+		})
+	}
+}
+
 func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
 	// Clear any previous state.
 	SetLastSubject("")

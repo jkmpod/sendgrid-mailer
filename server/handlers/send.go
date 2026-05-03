@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
@@ -14,11 +15,38 @@ import (
 
 // sendRequest is the expected JSON body for the /send endpoint.
 type sendRequest struct {
-	Subject  string   `json:"subject"`
-	Template string   `json:"template"`
-	FilePath string   `json:"filePath"`
-	CC       []string `json:"cc"`
-	BCC      []string `json:"bcc"`
+	Subject    string   `json:"subject"`
+	Template   string   `json:"template"`
+	FilePath   string   `json:"filePath"`
+	CC         []string `json:"cc"`
+	BCC        []string `json:"bcc"`
+	Categories []string `json:"categories"`
+}
+
+// validateCategories trims whitespace, drops empty entries, deduplicates
+// (preserving first-occurrence order), and enforces SendGrid's documented
+// limits: no entry may exceed 255 characters and the resulting slice may
+// contain at most 10 entries.
+func validateCategories(in []string) ([]string, error) {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		s := strings.TrimSpace(raw)
+		if s == "" {
+			continue
+		}
+		if len(s) > 255 {
+			return nil, fmt.Errorf("category %q exceeds 255 characters", s)
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	if len(out) > 10 {
+		return nil, fmt.Errorf("too many categories: %d provided, maximum is 10", len(out))
+	}
+	return out, nil
 }
 
 // HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
@@ -55,6 +83,14 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
+		categories, err := validateCategories(req.Categories)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
 		testMode := EffectiveTestMode(cfg)
 		log.Printf("[send] request: subject=%q file=%q testMode=%v", req.Subject, req.FilePath, testMode)
 
@@ -83,7 +119,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 				})
 				return
 			}
-			result, err := e.SendTest(testEmails, req.Subject, req.Template, recipients[0], req.CC, req.BCC)
+			result, err := e.SendTest(testEmails, req.Subject, req.Template, recipients[0], req.CC, req.BCC, categories)
 			if err != nil {
 				log.Printf("[send] SendTest error: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -110,7 +146,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			// Fallback: if flushing isn't supported, do a normal JSON response.
-			result, err := e.SendBulk(recipients, req.Subject, req.Template, req.CC, req.BCC)
+			result, err := e.SendBulk(recipients, req.Subject, req.Template, req.CC, req.BCC, categories)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
 					"error": err.Error(),
@@ -150,7 +186,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 			}
 
-			_, err := e.SendBatch(chunk, req.Subject, req.Template, req.CC, req.BCC)
+			_, err := e.SendBatch(chunk, req.Subject, req.Template, req.CC, req.BCC, categories)
 			if err != nil {
 				totalFailed += len(chunk)
 				batchErrors = append(batchErrors, batchErrorJSON{
