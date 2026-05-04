@@ -1,4 +1,4 @@
-# start.ps1 — Start sendgrid-mailer (Windows / PowerShell)
+# start.ps1 -- Start sendgrid-mailer (Windows / PowerShell)
 #
 # Usage:
 #   cd sendgrid-mailer

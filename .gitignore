@@ -94,6 +94,9 @@ ai-log/
 # later un-ignored when the rest of the metacognitive log is published.
 ai-log/postmortem.md
 
+# understand-anything plugin output (knowledge graph, fingerprints, config, intermediates)
+.understand-anything/
+
 # Images or screenshots (if any)
 images/
 screenshots/

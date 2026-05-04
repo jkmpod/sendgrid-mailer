@@ -96,14 +96,18 @@ These have sensible defaults — only change them if you need to:
 
 By default the app starts in **test mode** — emails go only to a safe list of addresses you control, not to real recipients. This protects against accidental sends.
 
+In `.env`, set your test address list:
+
 ```
 TEST_MODE=true
 TEST_EMAILS=you@yourcompany.com,colleague@yourcompany.com
 ```
 
-When you are ready to send to real recipients, change `TEST_MODE` to `false`.
+**To switch between test and live mode, use the toggle in the app's UI** — no file editing or restart needed. The UI toggle takes effect immediately for that session.
 
-> **Important:** always run a test-mode send first to verify your template renders correctly before switching to `TEST_MODE=false`.
+> **Note:** the UI toggle resets when the app restarts. If you want the app to always start in live mode (e.g. on a shared server), change `TEST_MODE=false` in `.env`.
+
+> **Important:** always do a test-mode send first to verify your template renders correctly before switching to live mode.
 
 ---
 

@@ -1,4 +1,4 @@
-# setup.ps1 — First-time setup for sendgrid-mailer (Windows / PowerShell)
+# setup.ps1 -- First-time setup for sendgrid-mailer (Windows / PowerShell)
 # Run this once after cloning the repository.
 #
 # Usage:
@@ -12,10 +12,11 @@ function ok    { Write-Host "  OK $args" -ForegroundColor Green }
 function error { Write-Host "ERROR: $args" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "sendgrid-mailer — first-time setup" -ForegroundColor White
-Write-Host "====================================`n"
+Write-Host "sendgrid-mailer - first-time setup" -ForegroundColor White
+Write-Host "===================================="
+Write-Host ""
 
-# ── 1. Check Go is installed ──────────────────────────────────────────────────
+# -- 1. Check Go is installed --------------------------------------------------
 info "Checking for Go..."
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     Write-Host ""
@@ -27,28 +28,28 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
 }
 ok (go version)
 
-# ── 2. Create .env from template ──────────────────────────────────────────────
+# -- 2. Create .env from template ----------------------------------------------
 info "Checking for .env file..."
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
     ok ".env created from .env.example"
     Write-Host ""
     Write-Host "  NEXT: Open .env in any text editor (e.g. Notepad) and fill in:" -ForegroundColor Yellow
-    Write-Host "    SENDGRID_API_KEY  — your SendGrid API key (starts with SG.)"
-    Write-Host "    FROM_EMAIL        — the email address you want to send from"
-    Write-Host "    FROM_NAME         — the name recipients will see as the sender"
+    Write-Host "    SENDGRID_API_KEY  - your SendGrid API key (starts with SG.)"
+    Write-Host "    FROM_EMAIL        - the email address you want to send from"
+    Write-Host "    FROM_NAME         - the name recipients will see as the sender"
     Write-Host ""
 } else {
-    ok ".env already exists — skipping copy"
+    ok ".env already exists - skipping copy"
 }
 
-# ── 3. Download Go dependencies ───────────────────────────────────────────────
+# -- 3. Download Go dependencies -----------------------------------------------
 info "Downloading dependencies..."
 go mod download
 if ($LASTEXITCODE -ne 0) { error "go mod download failed." }
 ok "Dependencies downloaded"
 
-# ── 4. Quick build check ──────────────────────────────────────────────────────
+# -- 4. Quick build check ------------------------------------------------------
 info "Verifying the project builds..."
 go build ./... 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { error "Build failed. Check that Go 1.23+ is installed." }
