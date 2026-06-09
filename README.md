@@ -6,9 +6,10 @@ A self-hosted Go web app for sending bulk email via the SendGrid API. Upload a C
 
 - **CSV upload** — drag-and-drop a `.csv` file; the app detects columns automatically and shows a preview
 - **Template editor** — compose HTML with `{{.ColumnName}}` placeholders; click column chips to insert tags at the cursor
-- **Bulk sending** — recipients are batched automatically with configurable batch size and rate delay
-- **Real-time progress** — batch results stream to the browser via Server-Sent Events (SSE)
-- **Partial failure handling** — if some batches fail, the rest still send; per-batch errors are reported
+- **Bulk sending** — each recipient is sent as its own email, paced by a configurable rate delay
+- **CC / BCC** — any CC/BCC addresses receive a copy of every recipient's email
+- **Real-time progress** — per-recipient results stream to the browser via Server-Sent Events (SSE)
+- **Partial failure handling** — if some sends fail, the rest still send; per-recipient errors are reported
 - **Test mode** — send to a configured list of test addresses instead of real recipients (controlled by env var, not the UI)
 - **Activity logs** — view recent SendGrid delivery events filtered by subject, with a 10-minute cooldown after sending
 
@@ -40,8 +41,8 @@ All configuration is via environment variables. A `.env` file in the project roo
 | `SENDGRID_API_KEY` | Yes | — | SendGrid API key (starts with `SG.`) |
 | `FROM_EMAIL` | Yes | — | Sender email address |
 | `FROM_NAME` | Yes | — | Sender display name |
-| `MAX_BATCH_SIZE` | No | `1000` | Max recipients per SendGrid API call |
-| `RATE_DELAY_MS` | No | `100` | Milliseconds to wait between batches |
+| `MAX_BATCH_SIZE` | No | `1000` | **Deprecated / no-op.** The app now sends one email per recipient, so this no longer controls recipients-per-API-call. Kept only for backward compatibility. |
+| `RATE_DELAY_MS` | No | `100` | Milliseconds to wait between each per-recipient send |
 | `PORT` | No | `8080` | HTTP server listen port |
 | `TEST_MODE` | No | `false` | When `true`, emails go only to `TEST_EMAILS` |
 | `TEST_EMAILS` | When `TEST_MODE=true` | — | Comma-separated list of test recipient addresses |

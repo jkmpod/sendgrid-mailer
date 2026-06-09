@@ -111,8 +111,15 @@ The pattern is in `server/handlers/state.go` (or its sibling files):
 - Set `Content-Type: text/event-stream`, `Cache-Control: no-cache`,
   `Connection: keep-alive`.
 - After every write, call `flusher.Flush()` (assert `w.(http.Flusher)`).
-- Format frames as `data: <json>\n\n`.
-- The browser side uses `EventSource` in `templates/index.html`.
+- Format frames as `event: <name>\ndata: <json>\n\n`.
+- One email is sent per recipient. After each send, emit a `progress` event:
+  `{"sent":int,"failed":int,"total":int,"email":string,"ok":bool}` with
+  running counts. After all recipients, emit a final `done` event:
+  `{"totalSent":int,"totalFailed":int,"failures":[{"email","error"}],"testMode":bool}`.
+- The browser side parses these in `parseSSE` in `templates/index.html`.
+- Test mode and non-flusher fallback paths return JSON directly via
+  `sendResultToJSON` instead of SSE; the UI synthesises a `done` event from
+  that JSON.
 
 See `.claude/skills/sse-streaming.md` for the full template.
 

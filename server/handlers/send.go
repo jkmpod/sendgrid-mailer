@@ -55,10 +55,10 @@ func validateCategories(in []string) ([]string, error) {
 }
 
 // HandleSend returns an http.HandlerFunc that accepts a JSON POST, loads
-// recipients from a CSV, and sends email in batches. Progress is streamed to
-// the client using Server-Sent Events (text/event-stream) so the log panel
-// updates in real time. When cfg.TestMode is true, emails are sent only to
-// cfg.TestEmails using the first CSV row for personalisation.
+// recipients from a CSV, and sends one email per recipient. Progress is
+// streamed to the client using Server-Sent Events (text/event-stream) so the
+// log panel updates in real time. When cfg.TestMode is true, emails are sent
+// only to cfg.TestEmails using the first CSV row for personalisation.
 func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -180,62 +180,64 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		chunks := mailer.ChunkRecipients(recipients, e.MaxBatchSize)
-		var totalSent, totalFailed int
-		type batchErrorJSON struct {
-			BatchIndex int    `json:"batchIndex"`
-			Error      string `json:"error"`
+		total := len(recipients)
+		var sent, failed int
+		type failureJSON struct {
+			Email string `json:"email"`
+			Error string `json:"error"`
 		}
-		var batchErrors []batchErrorJSON
+		var failures []failureJSON
 
-		for i, chunk := range chunks {
+		for i, r := range recipients {
 			if i > 0 {
 				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 			}
 
-			_, err := e.SendBatch(chunk, req.Subject, req.Template, req.CC, req.BCC, categories)
+			_, err := e.SendOne(r, req.Subject, req.Template, req.CC, req.BCC, categories)
 			if err != nil {
-				totalFailed += len(chunk)
-				batchErrors = append(batchErrors, batchErrorJSON{
-					BatchIndex: i,
-					Error:      err.Error(),
-				})
-				sseEvent(w, "batch", map[string]interface{}{
-					"batch":  i + 1,
-					"total":  len(chunks),
-					"status": "failed",
-					"error":  err.Error(),
+				failed++
+				failures = append(failures, failureJSON{Email: r.Email, Error: err.Error()})
+				sseEvent(w, "progress", map[string]interface{}{
+					"sent":   sent,
+					"failed": failed,
+					"total":  total,
+					"email":  r.Email,
+					"ok":     false,
 				})
 			} else {
-				totalSent += len(chunk)
-				sseEvent(w, "batch", map[string]interface{}{
-					"batch":  i + 1,
-					"total":  len(chunks),
-					"status": "ok",
-					"sent":   len(chunk),
+				sent++
+				sseEvent(w, "progress", map[string]interface{}{
+					"sent":   sent,
+					"failed": failed,
+					"total":  total,
+					"email":  r.Email,
+					"ok":     true,
 				})
 			}
 			flusher.Flush()
 		}
 
-		log.Printf("[send] complete: totalSent=%d totalFailed=%d", totalSent, totalFailed)
+		log.Printf("[send] complete: totalSent=%d totalFailed=%d", sent, failed)
 
-		if totalSent > 0 {
+		if sent > 0 {
 			SetLastSubject(req.Subject)
 		}
 		AppendSendLog(SendLogEntry{
 			Time:        time.Now(),
 			Subject:     req.Subject,
-			TotalSent:   totalSent,
-			TotalFailed: totalFailed,
+			TotalSent:   sent,
+			TotalFailed: failed,
 			TestMode:    false,
 		})
 
-		// Send the final summary event.
+		if failures == nil {
+			failures = []failureJSON{}
+		}
+
 		sseEvent(w, "done", map[string]interface{}{
-			"totalSent":   totalSent,
-			"totalFailed": totalFailed,
-			"batchErrors": batchErrors,
+			"totalSent":   sent,
+			"totalFailed": failed,
+			"failures":    failures,
 			"testMode":    false,
 		})
 		flusher.Flush()
@@ -243,18 +245,24 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 }
 
 // sendResultToJSON converts a mailer.SendResult to a JSON-friendly map.
+// The resulting map uses "failures" (a slice of {email, error} objects)
+// rather than the old batch-oriented "batchErrors" field.
 func sendResultToJSON(sr mailer.SendResult) map[string]interface{} {
-	errors := make([]map[string]interface{}, len(sr.BatchErrors))
-	for i, be := range sr.BatchErrors {
-		errors[i] = map[string]interface{}{
-			"batchIndex": be.BatchIndex,
-			"error":      be.Err.Error(),
+	type failureJSON struct {
+		Email string `json:"email"`
+		Error string `json:"error"`
+	}
+	failures := make([]failureJSON, len(sr.Failures))
+	for i, rf := range sr.Failures {
+		failures[i] = failureJSON{
+			Email: rf.Email,
+			Error: rf.Err.Error(),
 		}
 	}
 	return map[string]interface{}{
 		"totalSent":   sr.TotalSent,
 		"totalFailed": sr.TotalFailed,
-		"batchErrors": errors,
+		"failures":    failures,
 	}
 }
 
