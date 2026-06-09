@@ -42,6 +42,7 @@ func HandleLogs(apiKey, messagesURL string) http.HandlerFunc {
 // allows tests to point at a mock server instead of the real SendGrid API.
 func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
 		q := r.URL.Query()
 
 		// Parse limit (default 50, max 1000).
