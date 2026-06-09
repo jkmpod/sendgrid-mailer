@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strings"
@@ -176,6 +177,21 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
+		subjTmpl, err := template.New("subject").Parse(req.Subject)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("invalid subject template: %v", err),
+			})
+			return
+		}
+		bodyTmpl, err := template.New("body").Parse(req.Template)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("invalid HTML template: %v", err),
+			})
+			return
+		}
+
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -188,31 +204,42 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		}
 		var failures []failureJSON
 
-		for i, r := range recipients {
+		for i, rec := range recipients {
+			select {
+			case <-r.Context().Done():
+				log.Printf("[send] request cancelled by client")
+				return
+			default:
+			}
+
 			if i > 0 {
 				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 			}
 
-			_, err := e.SendOne(r, req.Subject, req.Template, req.CC, req.BCC, categories)
+			_, err := e.SendOne(rec, subjTmpl, bodyTmpl, req.CC, req.BCC, categories)
 			if err != nil {
 				failed++
-				failures = append(failures, failureJSON{Email: r.Email, Error: err.Error()})
-				sseEvent(w, "progress", map[string]interface{}{
+				failures = append(failures, failureJSON{Email: rec.Email, Error: err.Error()})
+				if err := sseEvent(w, "progress", map[string]interface{}{
 					"sent":   sent,
 					"failed": failed,
 					"total":  total,
-					"email":  r.Email,
+					"email":  rec.Email,
 					"ok":     false,
-				})
+				}); err != nil {
+					return
+				}
 			} else {
 				sent++
-				sseEvent(w, "progress", map[string]interface{}{
+				if err := sseEvent(w, "progress", map[string]interface{}{
 					"sent":   sent,
 					"failed": failed,
 					"total":  total,
-					"email":  r.Email,
+					"email":  rec.Email,
 					"ok":     true,
-				})
+				}); err != nil {
+					return
+				}
 			}
 			flusher.Flush()
 		}
@@ -234,7 +261,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			failures = []failureJSON{}
 		}
 
-		sseEvent(w, "done", map[string]interface{}{
+		_ = sseEvent(w, "done", map[string]interface{}{
 			"totalSent":   sent,
 			"totalFailed": failed,
 			"failures":    failures,
@@ -266,14 +293,18 @@ func sendResultToJSON(sr mailer.SendResult) map[string]interface{} {
 	}
 }
 
-// sseEvent writes a single Server-Sent Event to the response.
-func sseEvent(w http.ResponseWriter, event string, data interface{}) {
+// sseEvent writes a single Server-Sent Event to the response. It returns an
+// error if the write fails, which should be checked by the caller to detect
+// client disconnection.
+func sseEvent(w http.ResponseWriter, event string, data interface{}) error {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("[send] sseEvent: marshal failed: %v", err)
-		return
+		return fmt.Errorf("marshal failed: %w", err)
 	}
 	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData); err != nil {
 		log.Printf("[send] sseEvent: write failed: %v", err)
+		return fmt.Errorf("write failed: %w", err)
 	}
+	return nil
 }

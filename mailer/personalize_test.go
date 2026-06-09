@@ -1,6 +1,7 @@
 package mailer
 
 import (
+	"html/template"
 	"strings"
 	"testing"
 
@@ -43,7 +44,9 @@ func TestBuildMail_Categories(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := BuildMail(from, "Test Subject", tmpl, recipient, nil, nil, tt.categories)
+			st, _ := template.New("s").Parse("Test Subject")
+			bt, _ := template.New("b").Parse(tmpl)
+			m, err := BuildMail(from, st, bt, recipient, nil, nil, tt.categories)
 			if err != nil {
 				t.Fatalf("BuildMail returned unexpected error: %v", err)
 			}
@@ -68,10 +71,8 @@ func TestBuildMail_Categories(t *testing.T) {
 }
 
 func TestBuildMail_InvalidTemplate(t *testing.T) {
-	from := mail.NewEmail("Test Sender", "sender@example.com")
-	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
-
-	_, err := BuildMail(from, "Subject", "{{.Unclosed", recipient, nil, nil, nil)
+	// Template parsing is now done outside BuildMail.
+	_, err := template.New("b").Parse("{{.Unclosed")
 	if err == nil {
 		t.Error("expected error for invalid template, got nil")
 	}
@@ -88,7 +89,9 @@ func TestBuildMail_DirectBodyContent(t *testing.T) {
 	}
 	tmpl := "<p>Hello {{.Name}}, you work at {{.company}}.</p>"
 
-	m, err := BuildMail(from, "Hi {{.Name}}", tmpl, recipient, nil, nil, nil)
+	st, _ := template.New("s").Parse("Hi {{.Name}}")
+	bt, _ := template.New("b").Parse(tmpl)
+	m, err := BuildMail(from, st, bt, recipient, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("BuildMail returned unexpected error: %v", err)
 	}
@@ -116,7 +119,9 @@ func TestBuildMail_CCAndBCCExactlyOnce(t *testing.T) {
 	from := mail.NewEmail("Test Sender", "sender@example.com")
 	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
 
-	m, err := BuildMail(from, "Subject", "<p>Hi</p>", recipient,
+	st, _ := template.New("s").Parse("Subject")
+	bt, _ := template.New("b").Parse("<p>Hi</p>")
+	m, err := BuildMail(from, st, bt, recipient,
 		[]string{"cc@example.com"},
 		[]string{"bcc@example.com"},
 		nil,
@@ -146,7 +151,7 @@ func TestBuildMail_CCAndBCCExactlyOnce(t *testing.T) {
 }
 
 func TestBuildMail_SubjectPersonalized(t *testing.T) {
-	// (c) Subject template is personalized per recipient.
+	// (c) Subject template is personalised per recipient.
 	from := mail.NewEmail("Sender", "sender@example.com")
 
 	tests := []struct {
@@ -181,7 +186,9 @@ func TestBuildMail_SubjectPersonalized(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := BuildMail(from, tt.subjectTmpl, "<p>body</p>", tt.recipient, nil, nil, nil)
+			st, _ := template.New("s").Parse(tt.subjectTmpl)
+			bt, _ := template.New("b").Parse("<p>body</p>")
+			m, err := BuildMail(from, st, bt, tt.recipient, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("BuildMail error: %v", err)
 			}
@@ -202,7 +209,9 @@ func TestBuildMail_ColumnWithSpaceUsesIndexSyntax(t *testing.T) {
 	}
 	tmpl := `<p>Hello {{index . "First Name"}}</p>`
 
-	m, err := BuildMail(from, "Subject", tmpl, recipient, nil, nil, nil)
+	st, _ := template.New("s").Parse("Subject")
+	bt, _ := template.New("b").Parse(tmpl)
+	m, err := BuildMail(from, st, bt, recipient, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("BuildMail error: %v", err)
 	}

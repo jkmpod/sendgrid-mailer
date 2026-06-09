@@ -3,6 +3,7 @@ package mailer
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"time"
 
@@ -10,6 +11,13 @@ import (
 
 	"github.com/jkmpod/sendgrid-mailer/models"
 )
+
+// BatchError records a failure for a specific batch during bulk sending.
+// Retained for backward compatibility.
+type BatchError struct {
+	BatchIndex int
+	Err        error
+}
 
 // RecipientError records a send failure for a single recipient.
 type RecipientError struct {
@@ -28,6 +36,8 @@ type SendResult struct {
 	TotalFailed int
 	// Failures lists the per-recipient failures encountered during the send.
 	Failures []RecipientError
+	// BatchErrors is retained for backward compatibility.
+	BatchErrors []BatchError
 }
 
 // SendOne sends a single email to one recipient. It builds the mail message
@@ -36,8 +46,8 @@ type SendResult struct {
 // level.
 func (e *Emailer) SendOne(
 	recipient models.EmailRecipient,
-	subject string,
-	htmlTemplate string,
+	subjTmpl *template.Template,
+	bodyTmpl *template.Template,
 	cc []string,
 	bcc []string,
 	categories []string,
@@ -45,14 +55,14 @@ func (e *Emailer) SendOne(
 	fromEmail, fromName := e.GetFrom()
 	from := mail.NewEmail(fromName, fromEmail)
 
-	msg, err := BuildMail(from, subject, htmlTemplate, recipient, cc, bcc, categories)
+	msg, err := BuildMail(from, subjTmpl, bodyTmpl, recipient, cc, bcc, categories)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	client := e.client
-	e.mu.Unlock()
 
 	resp, err := client.Send(msg)
 	if err != nil {
@@ -102,6 +112,15 @@ func (e *Emailer) SendTest(
 	}
 
 	testSubject := "[TEST] " + subject
+	subjTmpl, err := template.New("subject").Parse(testSubject)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("failed to parse subject template: %w", err)
+	}
+	bodyTmpl, err := template.New("body").Parse(htmlTemplate)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("failed to parse HTML template: %w", err)
+	}
+
 	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
 
 	var sr SendResult
@@ -116,7 +135,7 @@ func (e *Emailer) SendTest(
 			CustomFields: firstRecipient.CustomFields,
 		}
 
-		_, err := e.SendOne(r, testSubject, htmlTemplate, cc, bcc, categories)
+		_, err := e.SendOne(r, subjTmpl, bodyTmpl, cc, bcc, categories)
 		if err != nil {
 			log.Printf("[mailer] SendTest: failed for %s: %v", addr, err)
 			sr.TotalFailed++
@@ -145,6 +164,15 @@ func (e *Emailer) SendBulk(
 	bcc []string,
 	categories []string,
 ) (SendResult, error) {
+	subjTmpl, err := template.New("subject").Parse(subject)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("failed to parse subject template: %w", err)
+	}
+	bodyTmpl, err := template.New("body").Parse(htmlTemplate)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("failed to parse HTML template: %w", err)
+	}
+
 	log.Printf("[mailer] SendBulk: starting send to %d recipients", len(recipients))
 
 	var sr SendResult
@@ -154,7 +182,7 @@ func (e *Emailer) SendBulk(
 			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
-		_, err := e.SendOne(r, subject, htmlTemplate, cc, bcc, categories)
+		_, err := e.SendOne(r, subjTmpl, bodyTmpl, cc, bcc, categories)
 		if err != nil {
 			sr.TotalFailed++
 			sr.Failures = append(sr.Failures, RecipientError{Email: r.Email, Err: err})
@@ -168,4 +196,27 @@ func (e *Emailer) SendBulk(
 
 	log.Printf("[mailer] SendBulk: complete, totalSent=%d totalFailed=%d", sr.TotalSent, sr.TotalFailed)
 	return sr, nil
+}
+
+// SendBatch is a backward-compatible wrapper for SendBulk.
+// It is deprecated and should not be used in new code.
+func (e *Emailer) SendBatch(
+	recipients []models.EmailRecipient,
+	subject string,
+	htmlTemplate string,
+	cc []string,
+	bcc []string,
+	categories []string,
+) (map[string]interface{}, error) {
+	sr, err := e.SendBulk(recipients, subject, htmlTemplate, cc, bcc, categories)
+	if err != nil {
+		return nil, err
+	}
+	if len(sr.Failures) > 0 {
+		return nil, sr.Failures[0].Err
+	}
+	return map[string]interface{}{
+		"totalSent":   sr.TotalSent,
+		"totalFailed": sr.TotalFailed,
+	}, nil
 }

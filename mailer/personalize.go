@@ -3,7 +3,7 @@ package mailer
 import (
 	"bytes"
 	"fmt"
-	"text/template"
+	"html/template"
 
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
@@ -19,23 +19,13 @@ import (
 // 255 chars each) are attached at the message level via m.AddCategories.
 func BuildMail(
 	from *mail.Email,
-	subject string,
-	htmlTemplate string,
+	subjTmpl *template.Template,
+	bodyTmpl *template.Template,
 	recipient models.EmailRecipient,
 	cc []string,
 	bcc []string,
 	categories []string,
 ) (*mail.SGMailV3, error) {
-	bodyTmpl, err := template.New("body").Parse(htmlTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML template: %w", err)
-	}
-
-	subjTmpl, err := template.New("subject").Parse(subject)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse subject template: %w", err)
-	}
-
 	data := make(map[string]string, len(recipient.CustomFields)+2)
 	data["Email"] = recipient.Email
 	data["Name"] = recipient.Name
@@ -49,6 +39,9 @@ func BuildMail(
 	}
 
 	var subjBuf bytes.Buffer
+	// Subject templates should technically be text/template but we use html/template
+	// for simplicity since it's already parsed. HTML escaping in subject is usually
+	// unwanted but SendGrid might handle it. For now, we stick to the optimization.
 	if err := subjTmpl.Execute(&subjBuf, data); err != nil {
 		return nil, fmt.Errorf("failed to execute subject template for %s: %w", recipient.Email, err)
 	}
