@@ -14,6 +14,7 @@ import (
 // load to populate all settings fields.
 func HandleConfig(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"testMode":    EffectiveTestMode(cfg),
 			"testEmails":  EffectiveTestEmails(cfg),

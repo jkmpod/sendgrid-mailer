@@ -54,5 +54,6 @@ func (s *Server) Start(addr string) error {
 
 // handleIndex serves the main HTML page.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	http.ServeFile(w, r, "templates/index.html")
 }
