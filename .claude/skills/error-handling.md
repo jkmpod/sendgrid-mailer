@@ -42,4 +42,4 @@ func DoSomething(input string) (*Result, error) {
 
 `config/config.go` — `Load()` has 7 early return points: 3 for missing required env vars, 2 for invalid integers (`strconv.Atoi`), 1 for invalid boolean (`strconv.ParseBool`), and 1 for cross-field validation (TestMode true but TestEmails empty). Each returns `nil, fmt.Errorf("descriptive message: %w", err)`.
 
-`mailer/sender.go` — `SendBatch` has 3 error returns: BuildMail failure (template error), client.Send failure (network), and status >= 400 (API rejection). Each wraps the original error with `%w`.
+`mailer/sender.go` — `SendOne` has 3 error returns: BuildMail failure (template error), client.Send failure (network), and status >= 400 (API rejection). Each wraps the original error with `%w`.

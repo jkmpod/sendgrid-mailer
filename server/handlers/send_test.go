@@ -163,6 +163,7 @@ func TestHandleSend_ValidRequest(t *testing.T) {
 
 func TestHandleSend_PartialFailure(t *testing.T) {
 	// Mock server returns 202 on the first POST and 500 on the second.
+	// Per-recipient sending: alice=ok, bob=fail, charlie=ok → sent=2 failed=1.
 	var callCount int32
 	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&callCount, 1)
@@ -174,7 +175,6 @@ func TestHandleSend_PartialFailure(t *testing.T) {
 	}))
 	defer sgServer.Close()
 
-	// 3 recipients with batch size 2 → 2 batches: [alice, bob] and [charlie].
 	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\nbob@example.com,Bob\ncharlie@example.com,Charlie\n")
 
 	cfg := &config.Config{
@@ -198,22 +198,25 @@ func TestHandleSend_PartialFailure(t *testing.T) {
 
 	responseBody := rr.Body.String()
 
-	// Batch 1 (alice+bob) succeeds; batch 2 (charlie) fails.
-	if !strings.Contains(responseBody, `"batch":1`) {
-		t.Errorf("expected batch 1 event; got: %s", responseBody)
-	}
-	if !strings.Contains(responseBody, `"batch":2`) {
-		t.Errorf("expected batch 2 event; got: %s", responseBody)
+	// Each recipient generates a progress event; last event is done.
+	if !strings.Contains(responseBody, "event: progress") {
+		t.Errorf("expected progress events in response; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, "done") {
 		t.Errorf("expected 'done' event; got: %s", responseBody)
 	}
-	// Batch 1 ok → totalSent=2; batch 2 failed → totalFailed=1.
+	// alice and charlie succeed (calls 1 and 3); bob fails (call 2).
 	if !strings.Contains(responseBody, `"totalSent":2`) {
 		t.Errorf("expected totalSent:2 in done event; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, `"totalFailed":1`) {
 		t.Errorf("expected totalFailed:1 in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, "failures") {
+		t.Errorf("expected failures field in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, "bob@example.com") {
+		t.Errorf("expected bob@example.com in failures; got: %s", responseBody)
 	}
 }
 
@@ -450,6 +453,98 @@ func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
 	got := GetLastSubject()
 	if got != "Success Subject" {
 		t.Errorf("GetLastSubject() = %q, want %q", got, "Success Subject")
+	}
+}
+
+func TestHandleSend_TemplateValidation(t *testing.T) {
+	// Up-front template validation must return 400 with an error mentioning
+	// "template" before any SendGrid call is attempted.
+	tests := []struct {
+		name     string
+		subject  string
+		template string
+		csv      string
+	}{
+		{
+			name:     "malformed subject template",
+			subject:  "Hi {{.Name",
+			template: "<p>body</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+		{
+			name:     "malformed HTML template",
+			subject:  "Hello",
+			template: "<p>{{.Name</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+		{
+			name:     "template references missing column",
+			subject:  "Hello",
+			template: "<p>{{.Nope}}</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+	}
+
+	// Mock SendGrid — must not be called for any of these cases.
+	var sgCallCount int32
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sgCallCount, 1)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
+	cfg := &config.Config{
+		APIKey:       "SG.test-key",
+		FromEmail:    "test@example.com",
+		FromName:     "Test",
+		MaxBatchSize: 1000,
+		RateDelayMS:  0,
+		TestMode:     false,
+	}
+	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
+	handler := HandleSend(e, cfg)
+	ResetRuntimeConfig()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csvPath := writeTempCSV(t, tt.csv)
+
+			type reqBody struct {
+				Subject  string `json:"subject"`
+				Template string `json:"template"`
+				FilePath string `json:"filePath"`
+			}
+			rb := reqBody{
+				Subject:  tt.subject,
+				Template: tt.template,
+				FilePath: csvPath,
+			}
+			bodyBytes, _ := json.Marshal(rb)
+
+			req := httptest.NewRequest("POST", "/send", strings.NewReader(string(bodyBytes)))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400; body: %s", rr.Code, rr.Body.String())
+			}
+
+			var resp map[string]interface{}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to parse response body: %v", err)
+			}
+			errMsg, _ := resp["error"].(string)
+			if !strings.Contains(errMsg, "template") {
+				t.Errorf("error = %q, want substring %q", errMsg, "template")
+			}
+		})
+	}
+
+	if sgCallCount != 0 {
+		t.Errorf("SendGrid was called %d times, want 0 (should fail before reaching the network)", sgCallCount)
 	}
 }
 

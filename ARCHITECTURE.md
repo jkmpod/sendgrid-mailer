@@ -61,9 +61,20 @@ otherwise.
   `sync.Mutex`. Each shared variable has a getter and setter that lock and
   unlock around access. Examples: `lastSubject`, `lastColumns`, `lastFilePath`,
   send log entries, runtime config overrides.
+- **Sending is one SendGrid `mail/send` call per recipient** — a single
+  personalization per message. Each recipient's HTML is rendered from the
+  template and placed directly in the message body (no substitution tokens).
+  This is deliberate: it lets the body vary per recipient and lets CC/BCC be
+  attached per message, so CC/BCC reliably receive a copy of *every*
+  recipient's email. The trade-off is one API call per recipient (no
+  multi-recipient batching), paced by `RATE_DELAY_MS` between sends.
+- **`MAX_BATCH_SIZE` is retained for backward compatibility only.** It no
+  longer governs SendGrid API batching — the app sends one message per
+  recipient regardless of its value. Operators should not expect it to change
+  recipients-per-call.
 - **Long-running sends** stream progress to the browser over Server-Sent
-  Events (`text/event-stream`). The connection is held open by `HandleSend`
-  for the duration of the bulk send.
+  Events (`text/event-stream`), one update per recipient. The connection is
+  held open by `HandleSend` for the duration of the send.
 - **SendGrid API calls** go through the `mailer.Emailer`. In tests, the SendGrid
   base URL is overridden to point at an `httptest.NewServer` — no real network
   calls.
