@@ -33,6 +33,7 @@ func SetLastFilePath(path string) {
 // CSV upload. This is a helper endpoint for the template editor — no
 // persistence is needed.
 func HandleCompose(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	mu.RLock()
 	defer mu.RUnlock()
 	cols := append([]string(nil), lastColumns...)
