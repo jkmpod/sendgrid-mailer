@@ -195,20 +195,27 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		}
 		var failures []failureJSON
 
-		for i, r := range recipients {
+		for i, rec := range recipients {
+			select {
+			case <-r.Context().Done():
+				log.Printf("[send] client disconnected during bulk send")
+				return
+			default:
+			}
+
 			if i > 0 {
 				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 			}
 
-			_, err := e.SendOne(r, req.Subject, req.Template, req.CC, req.BCC, categories)
+			_, err := e.SendOne(rec, req.Subject, req.Template, req.CC, req.BCC, categories)
 			if err != nil {
 				failed++
-				failures = append(failures, failureJSON{Email: r.Email, Error: err.Error()})
+				failures = append(failures, failureJSON{Email: rec.Email, Error: err.Error()})
 				sseEvent(w, "progress", map[string]interface{}{
 					"sent":   sent,
 					"failed": failed,
 					"total":  total,
-					"email":  r.Email,
+					"email":  rec.Email,
 					"ok":     false,
 				})
 			} else {
@@ -217,7 +224,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 					"sent":   sent,
 					"failed": failed,
 					"total":  total,
-					"email":  r.Email,
+					"email":  rec.Email,
 					"ok":     true,
 				})
 			}

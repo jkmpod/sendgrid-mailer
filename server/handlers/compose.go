@@ -34,9 +34,9 @@ func SetLastFilePath(path string) {
 // persistence is needed.
 func HandleCompose(w http.ResponseWriter, r *http.Request) {
 	mu.RLock()
+	defer mu.RUnlock()
 	cols := append([]string(nil), lastColumns...)
 	path := lastFilePath
-	mu.RUnlock()
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"columns":  cols,
