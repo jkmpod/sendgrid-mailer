@@ -93,6 +93,7 @@ ai-log/
 # Postmortems are explicitly internal — keep ignored even if ai-log/ is
 # later un-ignored when the rest of the metacognitive log is published.
 ai-log/postmortem.md
+docs/postmortem-*.md
 
 # understand-anything plugin output (knowledge graph, fingerprints, config, intermediates)
 .understand-anything/
