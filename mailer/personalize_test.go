@@ -84,10 +84,10 @@ func TestBuildMail_UnknownFieldReturnsError(t *testing.T) {
 	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
 
 	tests := []struct {
-		name        string
-		subject     string
-		htmlTmpl    string
-		wantErrSub  string
+		name       string
+		subject    string
+		htmlTmpl   string
+		wantErrSub string
 	}{
 		{
 			name:       "unknown field in body",
