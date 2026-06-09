@@ -163,6 +163,7 @@ func TestHandleSend_ValidRequest(t *testing.T) {
 
 func TestHandleSend_PartialFailure(t *testing.T) {
 	// Mock server returns 202 on the first POST and 500 on the second.
+	// Per-recipient sending: alice=ok, bob=fail, charlie=ok → sent=2 failed=1.
 	var callCount int32
 	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&callCount, 1)
@@ -174,7 +175,6 @@ func TestHandleSend_PartialFailure(t *testing.T) {
 	}))
 	defer sgServer.Close()
 
-	// 3 recipients with batch size 2 → 2 batches: [alice, bob] and [charlie].
 	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\nbob@example.com,Bob\ncharlie@example.com,Charlie\n")
 
 	cfg := &config.Config{
@@ -198,22 +198,25 @@ func TestHandleSend_PartialFailure(t *testing.T) {
 
 	responseBody := rr.Body.String()
 
-	// Batch 1 (alice+bob) succeeds; batch 2 (charlie) fails.
-	if !strings.Contains(responseBody, `"batch":1`) {
-		t.Errorf("expected batch 1 event; got: %s", responseBody)
-	}
-	if !strings.Contains(responseBody, `"batch":2`) {
-		t.Errorf("expected batch 2 event; got: %s", responseBody)
+	// Each recipient generates a progress event; last event is done.
+	if !strings.Contains(responseBody, "event: progress") {
+		t.Errorf("expected progress events in response; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, "done") {
 		t.Errorf("expected 'done' event; got: %s", responseBody)
 	}
-	// Batch 1 ok → totalSent=2; batch 2 failed → totalFailed=1.
+	// alice and charlie succeed (calls 1 and 3); bob fails (call 2).
 	if !strings.Contains(responseBody, `"totalSent":2`) {
 		t.Errorf("expected totalSent:2 in done event; got: %s", responseBody)
 	}
 	if !strings.Contains(responseBody, `"totalFailed":1`) {
 		t.Errorf("expected totalFailed:1 in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, "failures") {
+		t.Errorf("expected failures field in done event; got: %s", responseBody)
+	}
+	if !strings.Contains(responseBody, "bob@example.com") {
+		t.Errorf("expected bob@example.com in failures; got: %s", responseBody)
 	}
 }
 

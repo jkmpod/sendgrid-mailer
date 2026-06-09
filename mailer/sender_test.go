@@ -37,10 +37,10 @@ func TestSendBulk(t *testing.T) {
 		handler        http.HandlerFunc
 		wantSent       int
 		wantFailed     int
-		wantErrors     int // number of BatchErrors
+		wantErrors     int // number of per-recipient Failures
 	}{
 		{
-			name:           "all batches succeed",
+			name:           "all succeed",
 			recipientCount: 5,
 			batchSize:      3,
 			handler: func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,7 @@ func TestSendBulk(t *testing.T) {
 			wantErrors: 0,
 		},
 		{
-			name:           "one batch fails",
+			name:           "Nth call fails",
 			recipientCount: 6,
 			batchSize:      3,
 			handler: func() http.HandlerFunc {
@@ -66,12 +66,12 @@ func TestSendBulk(t *testing.T) {
 					w.WriteHeader(http.StatusAccepted)
 				}
 			}(),
-			wantSent:   3,
-			wantFailed: 3,
+			wantSent:   5,
+			wantFailed: 1,
 			wantErrors: 1,
 		},
 		{
-			name:           "all batches fail",
+			name:           "all fail",
 			recipientCount: 4,
 			batchSize:      2,
 			handler: func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,7 @@ func TestSendBulk(t *testing.T) {
 			},
 			wantSent:   0,
 			wantFailed: 4,
-			wantErrors: 2,
+			wantErrors: 4,
 		},
 	}
 
@@ -103,20 +103,65 @@ func TestSendBulk(t *testing.T) {
 			if result.TotalFailed != tt.wantFailed {
 				t.Errorf("TotalFailed = %d, want %d", result.TotalFailed, tt.wantFailed)
 			}
-			if len(result.BatchErrors) != tt.wantErrors {
-				t.Errorf("BatchErrors count = %d, want %d", len(result.BatchErrors), tt.wantErrors)
+			if len(result.Failures) != tt.wantErrors {
+				t.Errorf("Failures count = %d, want %d", len(result.Failures), tt.wantErrors)
 			}
 
-			// Verify batch errors contain meaningful error messages.
-			for _, be := range result.BatchErrors {
-				if be.Err == nil {
-					t.Errorf("BatchError at index %d has nil Err", be.BatchIndex)
+			// Verify per-recipient failures contain meaningful error messages.
+			for _, rf := range result.Failures {
+				if rf.Err == nil {
+					t.Errorf("RecipientError for %s has nil Err", rf.Email)
 				}
-				if !strings.Contains(be.Err.Error(), "SendGrid returned status") {
-					t.Errorf("BatchError message = %q, expected it to mention status code", be.Err.Error())
+				if !strings.Contains(rf.Err.Error(), "SendGrid returned status") {
+					t.Errorf("RecipientError message = %q, expected it to mention status code", rf.Err.Error())
 				}
 			}
 		})
+	}
+}
+
+func TestSendBulk_CCAppearsOncePerMessage(t *testing.T) {
+	// Guard against issue #1: a CC address must appear exactly once per
+	// SendGrid request, not be duplicated across personalizations.
+	var capturedBodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		capturedBodies = append(capturedBodies, string(buf))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipients := []models.EmailRecipient{
+		{Email: "alice@example.com", Name: "Alice"},
+		{Email: "bob@example.com", Name: "Bob"},
+	}
+
+	result, err := e.SendBulk(recipients, "Test Subject", "<p>Hi {{.Name}}</p>", []string{"boss@example.com"}, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected top-level error: %v", err)
+	}
+	if result.TotalSent != 2 {
+		t.Errorf("TotalSent = %d, want 2", result.TotalSent)
+	}
+	if result.TotalFailed != 0 {
+		t.Errorf("TotalFailed = %d, want 0", result.TotalFailed)
+	}
+
+	if len(capturedBodies) != 2 {
+		t.Fatalf("expected 2 SendGrid requests, got %d", len(capturedBodies))
+	}
+	const ccAddr = "boss@example.com"
+	for i, body := range capturedBodies {
+		count := strings.Count(body, ccAddr)
+		if count != 1 {
+			t.Errorf("request %d: %q appears %d times, want exactly 1", i+1, ccAddr, count)
+		}
 	}
 }
 

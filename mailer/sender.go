@@ -11,30 +11,31 @@ import (
 	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
-// BatchError records a failure for a specific batch during bulk sending.
-type BatchError struct {
-	// BatchIndex is the zero-based position of the failed batch within the bulk send.
-	BatchIndex int
-	// Err is the underlying error returned by SendBatch for this batch.
+// RecipientError records a send failure for a single recipient.
+type RecipientError struct {
+	// Email is the recipient address that failed.
+	Email string
+	// Err is the underlying error returned by SendOne for this recipient.
 	Err error
 }
 
 // SendResult summarises the outcome of a bulk send operation.
-// Partial success is expected — check BatchErrors for per-batch details.
+// Partial success is expected — check Failures for per-recipient details.
 type SendResult struct {
-	// TotalSent is the count of recipients across batches that the SendGrid API accepted.
+	// TotalSent is the count of recipients the SendGrid API accepted.
 	TotalSent int
-	// TotalFailed is the count of recipients across batches that the SendGrid API rejected.
+	// TotalFailed is the count of recipients the SendGrid API rejected.
 	TotalFailed int
-	// BatchErrors lists the per-batch failures encountered during the send.
-	BatchErrors []BatchError
+	// Failures lists the per-recipient failures encountered during the send.
+	Failures []RecipientError
 }
 
-// SendBatch sends a single batch of recipients. It builds the mail message,
-// calls the SendGrid API, and returns the parsed response body. Optional
-// categories are forwarded to BuildMail and attached at the message level.
-func (e *Emailer) SendBatch(
-	recipients []models.EmailRecipient,
+// SendOne sends a single email to one recipient. It builds the mail message
+// via BuildMail, calls the SendGrid API, and returns the parsed response body.
+// Optional categories are forwarded to BuildMail and attached at the message
+// level.
+func (e *Emailer) SendOne(
+	recipient models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
 	cc []string,
@@ -44,7 +45,7 @@ func (e *Emailer) SendBatch(
 	fromEmail, fromName := e.GetFrom()
 	from := mail.NewEmail(fromName, fromEmail)
 
-	msg, err := BuildMail(from, subject, htmlTemplate, recipients, cc, bcc, categories)
+	msg, err := BuildMail(from, subject, htmlTemplate, recipient, cc, bcc, categories)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
@@ -55,11 +56,11 @@ func (e *Emailer) SendBatch(
 
 	resp, err := client.Send(msg)
 	if err != nil {
-		log.Printf("[mailer] SendBatch: API request failed: %v", err)
+		log.Printf("[mailer] SendOne: API request failed for %s: %v", recipient.Email, err)
 		return nil, fmt.Errorf("SendGrid API request failed: %w", err)
 	}
 
-	log.Printf("[mailer] SendBatch: status=%d recipients=%d", resp.StatusCode, len(recipients))
+	log.Printf("[mailer] SendOne: status=%d recipient=%s", resp.StatusCode, recipient.Email)
 
 	result := make(map[string]interface{})
 	result["status_code"] = resp.StatusCode
@@ -75,7 +76,7 @@ func (e *Emailer) SendBatch(
 	}
 
 	if resp.StatusCode >= 400 {
-		log.Printf("[mailer] SendBatch: ERROR status=%d body=%s", resp.StatusCode, resp.Body)
+		log.Printf("[mailer] SendOne: ERROR status=%d recipient=%s body=%s", resp.StatusCode, recipient.Email, resp.Body)
 		return result, fmt.Errorf("SendGrid returned status %d", resp.StatusCode)
 	}
 
@@ -84,9 +85,9 @@ func (e *Emailer) SendBatch(
 
 // SendTest sends a test email to each address in testEmails, personalised
 // using data from firstRecipient (as if each test address were that person).
-// The subject is prefixed with "[TEST] ". No chunking is needed — all test
-// emails are sent as a single batch. Optional categories are forwarded to
-// BuildMail and attached at the message level.
+// The subject is prefixed with "[TEST] ". One SendGrid API call is made per
+// test address, separated by RateDelayMS. Optional categories are forwarded to
+// each SendOne call and attached at the message level.
 func (e *Emailer) SendTest(
 	testEmails []string,
 	subject string,
@@ -100,37 +101,42 @@ func (e *Emailer) SendTest(
 		return SendResult{}, fmt.Errorf("testEmails must not be empty")
 	}
 
-	recipients := make([]models.EmailRecipient, len(testEmails))
+	testSubject := "[TEST] " + subject
+	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
+
+	var sr SendResult
 	for i, addr := range testEmails {
-		recipients[i] = models.EmailRecipient{
+		if i > 0 {
+			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
+		}
+
+		r := models.EmailRecipient{
 			Email:        addr,
 			Name:         firstRecipient.Name,
 			CustomFields: firstRecipient.CustomFields,
 		}
+
+		_, err := e.SendOne(r, testSubject, htmlTemplate, cc, bcc, categories)
+		if err != nil {
+			log.Printf("[mailer] SendTest: failed for %s: %v", addr, err)
+			sr.TotalFailed++
+			sr.Failures = append(sr.Failures, RecipientError{Email: addr, Err: err})
+			continue
+		}
+		sr.TotalSent++
 	}
 
-	testSubject := "[TEST] " + subject
-	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
-
-	_, err := e.SendBatch(recipients, testSubject, htmlTemplate, cc, bcc, categories)
-	if err != nil {
-		log.Printf("[mailer] SendTest: failed: %v", err)
-		return SendResult{
-			TotalFailed: len(recipients),
-			BatchErrors: []BatchError{{BatchIndex: 0, Err: err}},
-		}, nil
-	}
-
-	log.Printf("[mailer] SendTest: success, sent=%d", len(recipients))
-	return SendResult{TotalSent: len(recipients)}, nil
+	log.Printf("[mailer] SendTest: complete, sent=%d failed=%d", sr.TotalSent, sr.TotalFailed)
+	return sr, nil
 }
 
-// SendBulk splits recipients into batches, sends each one, and collects
-// results. It does NOT stop on the first batch error — partial success is a
-// valid and expected outcome. A top-level error is returned only if something
-// systemic fails (e.g. the template is unparseable). A time.Sleep of
-// RateDelayMS milliseconds is inserted between batches. Optional categories
-// are forwarded to every SendBatch call and attached at the message level.
+// SendBulk iterates over recipients and sends one email per recipient via
+// SendOne. It does NOT stop on a per-recipient error — partial success is a
+// valid and expected outcome. A time.Sleep of RateDelayMS milliseconds is
+// inserted between sends (skipped before the first). Per-recipient template
+// errors are treated as recipient failures and recorded in Failures; no
+// top-level error is returned. Optional categories are forwarded to every
+// SendOne call and attached at the message level.
 func (e *Emailer) SendBulk(
 	recipients []models.EmailRecipient,
 	subject string,
@@ -139,29 +145,25 @@ func (e *Emailer) SendBulk(
 	bcc []string,
 	categories []string,
 ) (SendResult, error) {
-	chunks := ChunkRecipients(recipients, e.MaxBatchSize)
-	log.Printf("[mailer] SendBulk: starting send to %d recipients in %d batches", len(recipients), len(chunks))
+	log.Printf("[mailer] SendBulk: starting send to %d recipients", len(recipients))
 
 	var sr SendResult
 
-	for i, chunk := range chunks {
+	for i, r := range recipients {
 		if i > 0 {
 			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
-		_, err := e.SendBatch(chunk, subject, htmlTemplate, cc, bcc, categories)
+		_, err := e.SendOne(r, subject, htmlTemplate, cc, bcc, categories)
 		if err != nil {
-			sr.TotalFailed += len(chunk)
-			sr.BatchErrors = append(sr.BatchErrors, BatchError{
-				BatchIndex: i,
-				Err:        err,
-			})
-			log.Printf("[mailer] SendBulk: batch %d/%d failed: %v", i+1, len(chunks), err)
+			sr.TotalFailed++
+			sr.Failures = append(sr.Failures, RecipientError{Email: r.Email, Err: err})
+			log.Printf("[mailer] SendBulk: recipient %d/%d (%s) failed: %v", i+1, len(recipients), r.Email, err)
 			continue
 		}
 
-		sr.TotalSent += len(chunk)
-		log.Printf("[mailer] SendBulk: batch %d/%d ok, sent=%d", i+1, len(chunks), len(chunk))
+		sr.TotalSent++
+		log.Printf("[mailer] SendBulk: recipient %d/%d (%s) ok", i+1, len(recipients), r.Email)
 	}
 
 	log.Printf("[mailer] SendBulk: complete, totalSent=%d totalFailed=%d", sr.TotalSent, sr.TotalFailed)
