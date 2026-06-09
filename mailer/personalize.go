@@ -3,7 +3,8 @@ package mailer
 import (
 	"bytes"
 	"fmt"
-	"text/template"
+	"html/template"
+	texttmpl "text/template"
 
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
@@ -11,15 +12,15 @@ import (
 )
 
 // BuildMail constructs an SGMailV3 message for a single recipient. The
-// htmlTemplate and subject strings are each parsed as a Go text/template and
-// executed with the recipient's data (keys: Email, Name, plus every
-// CustomField key). The rendered HTML body is set directly as the message
-// content — no SendGrid substitution tokens are used. CC and BCC addresses
-// are added to the single Personalization. Optional categories (up to 10, max
-// 255 chars each) are attached at the message level via m.AddCategories.
-// Referencing an unknown field (one that is not present in the recipient's
-// data) returns an error; templates must only reference columns that exist in
-// the CSV.
+// htmlTemplate is parsed as Go html/template and the subject string is
+// parsed as Go text/template, each executed with the recipient's data
+// (keys: Email, Name, plus every CustomField key). The rendered HTML body
+// is set directly as the message content — no SendGrid substitution tokens
+// are used. CC and BCC addresses are added to the single Personalization.
+// Optional categories (up to 10, max 255 chars each) are attached at the
+// message level via m.AddCategories. Referencing an unknown field (one that
+// is not present in the recipient's data) returns an error; templates must
+// only reference columns that exist in the CSV.
 func BuildMail(
 	from *mail.Email,
 	subject string,
@@ -34,7 +35,7 @@ func BuildMail(
 		return nil, fmt.Errorf("failed to parse HTML template: %w", err)
 	}
 
-	subjTmpl, err := template.New("subject").Option("missingkey=error").Parse(subject)
+	subjTmpl, err := texttmpl.New("subject").Option("missingkey=error").Parse(subject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse subject template: %w", err)
 	}
