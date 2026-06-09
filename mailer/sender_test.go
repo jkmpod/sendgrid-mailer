@@ -122,7 +122,7 @@ func TestSendBulk(t *testing.T) {
 
 func TestSendBulk_CCAppearsOncePerMessage(t *testing.T) {
 	// Guard against issue #1: a CC address must appear exactly once per
-	// SendGrid request, not be duplicated across personalizations.
+	// SendGrid request, not be duplicated across personalisations.
 	var capturedBodies []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		buf, err := io.ReadAll(r.Body)

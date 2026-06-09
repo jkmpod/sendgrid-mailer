@@ -30,6 +30,16 @@ type SendResult struct {
 	Failures []RecipientError
 }
 
+// ValidateSend checks that the subject and HTML template parse and render
+// for the given recipient, returning a descriptive error if not. It performs
+// no network I/O — use it to fail fast before a bulk send.
+func (e *Emailer) ValidateSend(recipient models.EmailRecipient, subject, htmlTemplate string, cc, bcc, categories []string) error {
+	fromEmail, fromName := e.GetFrom()
+	from := mail.NewEmail(fromName, fromEmail)
+	_, err := BuildMail(from, subject, htmlTemplate, recipient, cc, bcc, categories)
+	return err
+}
+
 // SendOne sends a single email to one recipient. It builds the mail message
 // via BuildMail, calls the SendGrid API, and returns the parsed response body.
 // Optional categories are forwarded to BuildMail and attached at the message

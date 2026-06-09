@@ -77,6 +77,45 @@ func TestBuildMail_InvalidTemplate(t *testing.T) {
 	}
 }
 
+func TestBuildMail_UnknownFieldReturnsError(t *testing.T) {
+	// missingkey=error: referencing a column not present in the recipient's
+	// data must return an error rather than rendering "<no value>".
+	from := mail.NewEmail("Test Sender", "sender@example.com")
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	tests := []struct {
+		name        string
+		subject     string
+		htmlTmpl    string
+		wantErrSub  string
+	}{
+		{
+			name:       "unknown field in body",
+			subject:    "Hello",
+			htmlTmpl:   "<p>{{.Nope}}</p>",
+			wantErrSub: "Nope",
+		},
+		{
+			name:       "unknown field in subject",
+			subject:    "Hi {{.Typo}}",
+			htmlTmpl:   "<p>body</p>",
+			wantErrSub: "Typo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := BuildMail(from, tt.subject, tt.htmlTmpl, recipient, nil, nil, nil)
+			if err == nil {
+				t.Fatal("expected error for unknown template field, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrSub) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tt.wantErrSub)
+			}
+		})
+	}
+}
+
 func TestBuildMail_DirectBodyContent(t *testing.T) {
 	from := mail.NewEmail("Test Sender", "sender@example.com")
 	recipient := models.EmailRecipient{
@@ -126,7 +165,7 @@ func TestBuildMail_CCAndBCCExactlyOnce(t *testing.T) {
 	}
 
 	if len(m.Personalizations) != 1 {
-		t.Fatalf("expected 1 personalization, got %d", len(m.Personalizations))
+		t.Fatalf("expected 1 personalisation, got %d", len(m.Personalizations))
 	}
 	p := m.Personalizations[0]
 
@@ -145,8 +184,8 @@ func TestBuildMail_CCAndBCCExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestBuildMail_SubjectPersonalized(t *testing.T) {
-	// (c) Subject template is personalized per recipient.
+func TestBuildMail_SubjectPersonalised(t *testing.T) {
+	// (c) Subject template is personalised per recipient.
 	from := mail.NewEmail("Sender", "sender@example.com")
 
 	tests := []struct {

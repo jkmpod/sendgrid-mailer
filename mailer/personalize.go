@@ -17,6 +17,9 @@ import (
 // content — no SendGrid substitution tokens are used. CC and BCC addresses
 // are added to the single Personalization. Optional categories (up to 10, max
 // 255 chars each) are attached at the message level via m.AddCategories.
+// Referencing an unknown field (one that is not present in the recipient's
+// data) returns an error; templates must only reference columns that exist in
+// the CSV.
 func BuildMail(
 	from *mail.Email,
 	subject string,
@@ -26,12 +29,12 @@ func BuildMail(
 	bcc []string,
 	categories []string,
 ) (*mail.SGMailV3, error) {
-	bodyTmpl, err := template.New("body").Parse(htmlTemplate)
+	bodyTmpl, err := template.New("body").Option("missingkey=error").Parse(htmlTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML template: %w", err)
 	}
 
-	subjTmpl, err := template.New("subject").Parse(subject)
+	subjTmpl, err := template.New("subject").Option("missingkey=error").Parse(subject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse subject template: %w", err)
 	}

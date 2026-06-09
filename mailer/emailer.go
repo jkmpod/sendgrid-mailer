@@ -10,9 +10,11 @@ import (
 
 // Emailer holds configuration and the SendGrid client needed to send emails.
 type Emailer struct {
-	// MaxBatchSize caps recipients per outbound SendGrid call.
+	// MaxBatchSize is retained for backward compatibility. The app sends one
+	// email per recipient and no longer groups recipients into batches, so this
+	// field no longer governs batching.
 	MaxBatchSize int
-	// RateDelayMS is the inter-batch sleep in milliseconds.
+	// RateDelayMS is the delay in milliseconds between per-recipient sends.
 	RateDelayMS int
 	mu          sync.Mutex // guards fromEmail, fromName, and client
 	apiKey      string

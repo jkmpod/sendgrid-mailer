@@ -111,6 +111,13 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		}
 		log.Printf("[send] loaded %d recipients from CSV", len(recipients))
 
+		if len(recipients) > 0 {
+			if err := e.ValidateSend(recipients[0], req.Subject, req.Template, req.CC, req.BCC, categories); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "template error: " + err.Error()})
+				return
+			}
+		}
+
 		// Test mode: send only to test emails using the first CSV row.
 		if testMode {
 			testEmails := EffectiveTestEmails(cfg)

@@ -456,6 +456,98 @@ func TestHandleSend_LastSubjectUpdatedOnSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleSend_TemplateValidation(t *testing.T) {
+	// Up-front template validation must return 400 with an error mentioning
+	// "template" before any SendGrid call is attempted.
+	tests := []struct {
+		name     string
+		subject  string
+		template string
+		csv      string
+	}{
+		{
+			name:     "malformed subject template",
+			subject:  "Hi {{.Name",
+			template: "<p>body</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+		{
+			name:     "malformed HTML template",
+			subject:  "Hello",
+			template: "<p>{{.Name</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+		{
+			name:     "template references missing column",
+			subject:  "Hello",
+			template: "<p>{{.Nope}}</p>",
+			csv:      "email,name\nalice@example.com,Alice\n",
+		},
+	}
+
+	// Mock SendGrid — must not be called for any of these cases.
+	var sgCallCount int32
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sgCallCount, 1)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
+	cfg := &config.Config{
+		APIKey:       "SG.test-key",
+		FromEmail:    "test@example.com",
+		FromName:     "Test",
+		MaxBatchSize: 1000,
+		RateDelayMS:  0,
+		TestMode:     false,
+	}
+	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
+	handler := HandleSend(e, cfg)
+	ResetRuntimeConfig()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csvPath := writeTempCSV(t, tt.csv)
+
+			type reqBody struct {
+				Subject  string `json:"subject"`
+				Template string `json:"template"`
+				FilePath string `json:"filePath"`
+			}
+			rb := reqBody{
+				Subject:  tt.subject,
+				Template: tt.template,
+				FilePath: csvPath,
+			}
+			bodyBytes, _ := json.Marshal(rb)
+
+			req := httptest.NewRequest("POST", "/send", strings.NewReader(string(bodyBytes)))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400; body: %s", rr.Code, rr.Body.String())
+			}
+
+			var resp map[string]interface{}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to parse response body: %v", err)
+			}
+			errMsg, _ := resp["error"].(string)
+			if !strings.Contains(errMsg, "template") {
+				t.Errorf("error = %q, want substring %q", errMsg, "template")
+			}
+		})
+	}
+
+	if sgCallCount != 0 {
+		t.Errorf("SendGrid was called %d times, want 0 (should fail before reaching the network)", sgCallCount)
+	}
+}
+
 func TestHandleSend_LastSubjectNotUpdatedOnAllFailure(t *testing.T) {
 	SetLastSubject("previous subject")
 

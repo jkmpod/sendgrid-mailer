@@ -60,9 +60,9 @@ sendgrid-mailer/
     csv.go                     # CSV parsing into EmailRecipient slices
   mailer/
     emailer.go                 # Emailer struct and constructor
-    batch.go                   # ChunkRecipients helper
-    personalize.go             # BuildMail — template rendering + SendGrid payload
-    sender.go                  # SendBatch, SendBulk, SendTest
+    batch.go                   # ChunkRecipients helper (not used by the send path)
+    personalize.go             # BuildMail — per-recipient template rendering + SendGrid payload
+    sender.go                  # SendOne, SendBulk, SendTest
   server/
     server.go                  # HTTP server and route registration
     handlers/
@@ -82,7 +82,7 @@ sendgrid-mailer/
 |--------|------|-------------|
 | `GET` | `/` | Serves the web UI |
 | `POST` | `/upload` | Accepts multipart CSV upload (max 10 MB). Returns recipient count, column names, and a 3-row preview. |
-| `POST` | `/send` | Accepts JSON `{"subject", "template", "filePath"}`. Streams batch progress via SSE, or returns JSON in test mode. |
+| `POST` | `/send` | Accepts JSON `{"subject", "template", "filePath"}`. Streams per-recipient progress via SSE, or returns JSON in test mode. |
 | `GET` | `/logs` | Proxies the SendGrid Activity Feed API. Accepts optional `?subject=` query param. |
 | `GET` | `/compose` | Returns column names and file path from the last CSV upload. |
 | `GET` | `/config` | Returns `{"testMode": bool, "lastSubject": string}`. |
