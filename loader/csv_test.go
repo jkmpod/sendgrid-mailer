@@ -56,8 +56,8 @@ func TestLoadFromCSV(t *testing.T) {
 			},
 		},
 		{
-			name:      "case-insensitive headers",
-			csv:       "Email,NAME,City\na@b.com,A,NY\n",
+			name:      "case-insensitive reserved headers",
+			csv:       "Email,NAME,city\na@b.com,A,NY\n",
 			wantCount: 1,
 			checkFirst: func(t *testing.T, email, nameField string, custom map[string]string) {
 				if email != "a@b.com" {
@@ -66,8 +66,8 @@ func TestLoadFromCSV(t *testing.T) {
 				if nameField != "A" {
 					t.Errorf("Name = %q, want %q", nameField, "A")
 				}
-				if custom["City"] != "NY" {
-					t.Errorf("CustomFields[City] = %q, want %q", custom["City"], "NY")
+				if custom["city"] != "NY" {
+					t.Errorf("CustomFields[city] = %q, want %q", custom["city"], "NY")
 				}
 			},
 		},
@@ -127,7 +127,7 @@ func TestLoadFromCSV(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeTemp(t, tt.csv)
-			recipients, err := LoadFromCSV(path)
+			recipients, _, err := LoadFromCSV(path)
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -153,8 +153,81 @@ func TestLoadFromCSV(t *testing.T) {
 	}
 }
 
+func TestLoadFromCSV_Normalisation(t *testing.T) {
+	tests := []struct {
+		name         string
+		csv          string
+		wantKey      string // expected CustomFields key after normalisation
+		wantVal      string // expected value
+		wantWarnings int    // expected number of warnings
+		wantWarnSub  string // substring that must appear in at least one warning
+	}{
+		{
+			name:         "mixed-case column normalised to lowercase",
+			csv:          "email,name,TeamName\nalice@ex.com,Alice,Alpha\n",
+			wantKey:      "teamname",
+			wantVal:      "Alpha",
+			wantWarnings: 1,
+			wantWarnSub:  `"TeamName" normalised to lowercase "teamname"`,
+		},
+		{
+			name:         "fully uppercase column normalised",
+			csv:          "email,name,CITY\nalice@ex.com,Alice,London\n",
+			wantKey:      "city",
+			wantVal:      "London",
+			wantWarnings: 1,
+			wantWarnSub:  `"CITY"`,
+		},
+		{
+			name:         "already lowercase — no warning",
+			csv:          "email,name,city\nalice@ex.com,Alice,London\n",
+			wantKey:      "city",
+			wantVal:      "London",
+			wantWarnings: 0,
+		},
+		{
+			name:         "two columns collide after normalisation",
+			csv:          "email,Team,team\nalice@ex.com,Alpha,beta\n",
+			wantWarnings: 2, // one rename warning ("Team"→"team") + one collision warning
+			wantWarnSub:  "both normalise to",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTemp(t, tt.csv)
+			recipients, warnings, err := LoadFromCSV(path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(warnings) != tt.wantWarnings {
+				t.Errorf("len(warnings) = %d, want %d; warnings: %v", len(warnings), tt.wantWarnings, warnings)
+			}
+			if tt.wantWarnSub != "" {
+				found := false
+				for _, w := range warnings {
+					if strings.Contains(w, tt.wantWarnSub) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("no warning contains %q; got: %v", tt.wantWarnSub, warnings)
+				}
+			}
+
+			if tt.wantKey != "" && len(recipients) > 0 {
+				if got := recipients[0].CustomFields[tt.wantKey]; got != tt.wantVal {
+					t.Errorf("CustomFields[%q] = %q, want %q", tt.wantKey, got, tt.wantVal)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadFromCSV_FileNotFound(t *testing.T) {
-	_, err := LoadFromCSV("/nonexistent/path/test.csv")
+	_, _, err := LoadFromCSV("/nonexistent/path/test.csv")
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}

@@ -40,9 +40,11 @@ func BuildMail(
 		return nil, fmt.Errorf("failed to parse subject template: %w", err)
 	}
 
-	data := make(map[string]string, len(recipient.CustomFields)+2)
+	data := make(map[string]string, len(recipient.CustomFields)+4)
 	data["Email"] = recipient.Email
 	data["Name"] = recipient.Name
+	data["email"] = recipient.Email // lowercase alias for compatibility
+	data["name"] = recipient.Name   // lowercase alias for compatibility
 	for k, v := range recipient.CustomFields {
 		data[k] = v
 	}

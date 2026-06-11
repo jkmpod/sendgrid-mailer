@@ -101,7 +101,7 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		testMode := EffectiveTestMode(cfg)
 		log.Printf("[send] request: subject=%q file=%q testMode=%v", req.Subject, req.FilePath, testMode)
 
-		recipients, err := loader.LoadFromCSV(req.FilePath)
+		recipients, _, err := loader.LoadFromCSV(req.FilePath)
 		if err != nil {
 			log.Printf("[send] CSV load failed: %v", err)
 			writeJSON(w, http.StatusBadRequest, map[string]string{

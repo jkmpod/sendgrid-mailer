@@ -61,12 +61,15 @@ func HandleUpload(cfg *config.Config) http.HandlerFunc {
 		// Close before reading so the file is flushed.
 		dst.Close()
 
-		recipients, err := loader.LoadFromCSV(tmpPath)
+		recipients, warnings, err := loader.LoadFromCSV(tmpPath)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": err.Error(),
 			})
 			return
+		}
+		if warnings == nil {
+			warnings = []string{}
 		}
 
 		columns := columnNames(recipients)
@@ -81,13 +84,16 @@ func HandleUpload(cfg *config.Config) http.HandlerFunc {
 			"columns":  columns,
 			"preview":  preview,
 			"filePath": tmpPath,
+			"warnings": warnings,
 		})
 	}
 }
 
 // columnNames extracts the full set of column names from the first recipient.
+// The reserved columns are returned as "Email" and "Name" (capital case) to
+// match the keys used in the template data map in mailer/personalize.go.
 func columnNames(recipients []models.EmailRecipient) []string {
-	cols := []string{"email", "name"}
+	cols := []string{"Email", "Name"}
 	if len(recipients) == 0 {
 		return cols
 	}

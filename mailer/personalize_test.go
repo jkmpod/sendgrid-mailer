@@ -231,6 +231,43 @@ func TestBuildMail_SubjectPersonalised(t *testing.T) {
 	}
 }
 
+func TestBuildMail_LowercaseAliases(t *testing.T) {
+	// {{.name}} and {{.email}} (lowercase) must resolve to the same values as
+	// {{.Name}} / {{.Email}}. Templates hand-typed before the UI chips were
+	// fixed used lowercase, so both forms must remain valid.
+	from := mail.NewEmail("Sender", "sender@example.com")
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	tests := []struct {
+		name     string
+		tmpl     string
+		wantBody string
+	}{
+		{
+			name:     "lowercase name in body",
+			tmpl:     "<p>Hello {{.name}}</p>",
+			wantBody: "<p>Hello Alice</p>",
+		},
+		{
+			name:     "lowercase email in body",
+			tmpl:     "<p>{{.email}}</p>",
+			wantBody: "<p>alice@example.com</p>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := BuildMail(from, "Subject", tt.tmpl, recipient, nil, nil, nil)
+			if err != nil {
+				t.Fatalf("BuildMail error: %v", err)
+			}
+			if got := m.Content[0].Value; got != tt.wantBody {
+				t.Errorf("body = %q, want %q", got, tt.wantBody)
+			}
+		})
+	}
+}
+
 func TestBuildMail_ColumnWithSpaceUsesIndexSyntax(t *testing.T) {
 	// (d) A column with a space in its name is accessible via {{index . "First Name"}}.
 	from := mail.NewEmail("Sender", "sender@example.com")

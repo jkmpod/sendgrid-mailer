@@ -188,6 +188,9 @@
     .status.info { background: #dbeafe; color: #1e40af; }
     .status.success { background: #dcfce7; color: #166534; }
     .status.error { background: #fee2e2; color: #991b1b; }
+    .status.warning { background: #fef3c7; color: #92400e; }
+    .status.warning ul { margin: 0.25rem 0 0 1rem; padding: 0; }
+    .status.warning li { margin: 0.1rem 0; }
 
     .hidden { display: none; }
 
@@ -366,6 +369,7 @@
     <input type="file" id="csv-file" accept=".csv">
 
     <div id="upload-status" class="status info hidden"></div>
+    <div id="upload-warnings" class="status warning hidden"></div>
 
     <div id="upload-columns" class="chips hidden"></div>
 
@@ -522,6 +526,7 @@
   // --- DOM refs ---
   const csvFileInput      = document.getElementById("csv-file");
   const uploadStatus      = document.getElementById("upload-status");
+  const uploadWarnings    = document.getElementById("upload-warnings");
   const uploadColumns     = document.getElementById("upload-columns");
   const uploadPreview     = document.getElementById("upload-preview");
   const editorChips       = document.getElementById("editor-chips");
@@ -675,6 +680,7 @@
 
     hide(uploadColumns);
     hide(uploadPreview);
+    hide(uploadWarnings);
     show(uploadStatus, "info");
     uploadStatus.textContent = "Uploading...";
 
@@ -696,6 +702,19 @@
       uploadData = data;
       show(uploadStatus, "success");
       uploadStatus.textContent = data.count + " recipients loaded";
+
+      // Column-name normalisation warnings
+      if (data.warnings && data.warnings.length > 0) {
+        var warnHtml = "<strong>Column names were normalised to lowercase:</strong><ul>";
+        data.warnings.forEach(function(w) {
+          warnHtml += "<li>" + w.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</li>";
+        });
+        warnHtml += "</ul>";
+        uploadWarnings.innerHTML = warnHtml;
+        show(uploadWarnings);
+      } else {
+        hide(uploadWarnings);
+      }
 
       // Column chips
       uploadColumns.innerHTML = "";
