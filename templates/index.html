@@ -192,7 +192,7 @@
     .status.warning ul { margin: 0.25rem 0 0 1rem; padding: 0; }
     .status.warning li { margin: 0.1rem 0; }
 
-    .hidden { display: none; }
+    .hidden { display: none !important; }
 
     /* Log panel */
     #log-list {
@@ -804,16 +804,6 @@
       const idxPat = new RegExp('\\{\\{index \\. "' + escapeRegex(key) + '"\\}\\}', "g");
       tmpl = tmpl.replace(dotPat, val).replace(idxPat, val);
     }
-    // Also handle Email and Name mapped from email/name (both tag forms).
-    if (sampleRow["email"]) {
-      const val = escapeHTML(sampleRow["email"]);
-      tmpl = tmpl.replace(/\{\{\.Email\}\}/g, val).replace(/\{\{index \. "Email"\}\}/g, val);
-    }
-    if (sampleRow["name"]) {
-      const val = escapeHTML(sampleRow["name"]);
-      tmpl = tmpl.replace(/\{\{\.Name\}\}/g, val).replace(/\{\{index \. "Name"\}\}/g, val);
-    }
-
     previewFrame.srcdoc = tmpl;
     show(previewFrame);
   });

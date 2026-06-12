@@ -111,8 +111,8 @@ func previewRows(recipients []models.EmailRecipient, n int) []map[string]string 
 	rows := make([]map[string]string, n)
 	for i := 0; i < n; i++ {
 		row := make(map[string]string, len(recipients[i].CustomFields)+2)
-		row["email"] = recipients[i].Email
-		row["name"] = recipients[i].Name
+		row["Email"] = recipients[i].Email
+		row["Name"] = recipients[i].Name
 		for k, v := range recipients[i].CustomFields {
 			row[k] = v
 		}
