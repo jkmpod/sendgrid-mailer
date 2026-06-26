@@ -80,6 +80,9 @@ func Load() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("SENDGRID_TIMEOUT_MS must be a valid integer: %w", err)
 		}
+		if n <= 0 {
+			return nil, fmt.Errorf("SENDGRID_TIMEOUT_MS must be a positive integer, got %d", n)
+		}
 		timeoutMS = n
 	}
 
@@ -89,6 +92,9 @@ func Load() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("RETRY_MAX_ATTEMPTS must be a valid integer: %w", err)
 		}
+		if n <= 0 {
+			return nil, fmt.Errorf("RETRY_MAX_ATTEMPTS must be a positive integer, got %d", n)
+		}
 		retryMaxAttempts = n
 	}
 
@@ -97,6 +103,9 @@ func Load() (*Config, error) {
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			return nil, fmt.Errorf("RETRY_BACKOFF_MS must be a valid integer: %w", err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("RETRY_BACKOFF_MS must be a positive integer, got %d", n)
 		}
 		retryBackoffMS = n
 	}

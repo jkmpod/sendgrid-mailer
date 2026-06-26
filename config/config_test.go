@@ -12,6 +12,7 @@ func clearEnv(t *testing.T) {
 	keys := []string{
 		"SENDGRID_API_KEY", "FROM_EMAIL", "FROM_NAME",
 		"MAX_BATCH_SIZE", "RATE_DELAY_MS",
+		"SENDGRID_TIMEOUT_MS", "RETRY_MAX_ATTEMPTS", "RETRY_BACKOFF_MS",
 		"TEST_MODE", "TEST_EMAILS",
 		"SENDGRID_MESSAGES_URL", "MAX_UPLOAD_SIZE_MB",
 	}
@@ -28,18 +29,21 @@ func clearEnv(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	tests := []struct {
-		name                string
-		env                 map[string]string
-		wantErr             string // substring expected in error message; "" means no error
-		wantAPIKey          string
-		wantEmail           string
-		wantName            string
-		wantBatch           int
-		wantDelayMS         int
-		wantTestMode        bool
-		wantTestEmails      []string
-		wantMessagesURL     string
-		wantMaxUploadSizeMB int
+		name                 string
+		env                  map[string]string
+		wantErr              string // substring expected in error message; "" means no error
+		wantAPIKey           string
+		wantEmail            string
+		wantName             string
+		wantBatch            int
+		wantDelayMS          int
+		wantTimeoutMS        int
+		wantRetryMaxAttempts int
+		wantRetryBackoffMS   int
+		wantTestMode         bool
+		wantTestEmails       []string
+		wantMessagesURL      string
+		wantMaxUploadSizeMB  int
 	}{
 		{
 			name: "all valid with defaults",
@@ -48,14 +52,17 @@ func TestLoad(t *testing.T) {
 				"FROM_EMAIL":       "test@example.com",
 				"FROM_NAME":        "Test Sender",
 			},
-			wantAPIKey:          "SG.test-key",
-			wantEmail:           "test@example.com",
-			wantName:            "Test Sender",
-			wantBatch:           1000,
-			wantDelayMS:         100,
-			wantTestMode:        true,
-			wantMessagesURL:     "https://api.sendgrid.com/v3/messages",
-			wantMaxUploadSizeMB: 10,
+			wantAPIKey:           "SG.test-key",
+			wantEmail:            "test@example.com",
+			wantName:             "Test Sender",
+			wantBatch:            1000,
+			wantDelayMS:          100,
+			wantTimeoutMS:        15000,
+			wantRetryMaxAttempts: 3,
+			wantRetryBackoffMS:   500,
+			wantTestMode:         true,
+			wantMessagesURL:      "https://api.sendgrid.com/v3/messages",
+			wantMaxUploadSizeMB:  10,
 		},
 		{
 			name: "all valid with custom integers",
@@ -223,6 +230,89 @@ func TestLoad(t *testing.T) {
 			},
 			wantErr: "MAX_UPLOAD_SIZE_MB",
 		},
+		// 2d: custom send-resilience values
+		{
+			name: "custom send-resilience values",
+			env: map[string]string{
+				"SENDGRID_API_KEY":    "SG.key",
+				"FROM_EMAIL":          "a@b.com",
+				"FROM_NAME":           "A",
+				"SENDGRID_TIMEOUT_MS": "30000",
+				"RETRY_MAX_ATTEMPTS":  "5",
+				"RETRY_BACKOFF_MS":    "1000",
+			},
+			wantAPIKey:           "SG.key",
+			wantEmail:            "a@b.com",
+			wantName:             "A",
+			wantBatch:            1000,
+			wantDelayMS:          100,
+			wantTimeoutMS:        30000,
+			wantRetryMaxAttempts: 5,
+			wantRetryBackoffMS:   1000,
+			wantTestMode:         true,
+		},
+		// 2e: invalid (non-integer) error cases
+		{
+			name: "invalid SENDGRID_TIMEOUT_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":    "k",
+				"FROM_EMAIL":          "a@b.com",
+				"FROM_NAME":           "A",
+				"SENDGRID_TIMEOUT_MS": "abc",
+			},
+			wantErr: "SENDGRID_TIMEOUT_MS",
+		},
+		{
+			name: "invalid RETRY_MAX_ATTEMPTS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "k",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"RETRY_MAX_ATTEMPTS": "abc",
+			},
+			wantErr: "RETRY_MAX_ATTEMPTS",
+		},
+		{
+			name: "invalid RETRY_BACKOFF_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY": "k",
+				"FROM_EMAIL":       "a@b.com",
+				"FROM_NAME":        "A",
+				"RETRY_BACKOFF_MS": "abc",
+			},
+			wantErr: "RETRY_BACKOFF_MS",
+		},
+		// 2f: non-positive validation error cases
+		{
+			name: "non-positive SENDGRID_TIMEOUT_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":    "k",
+				"FROM_EMAIL":          "a@b.com",
+				"FROM_NAME":           "A",
+				"SENDGRID_TIMEOUT_MS": "0",
+			},
+			wantErr: "SENDGRID_TIMEOUT_MS",
+		},
+		{
+			name: "non-positive RETRY_MAX_ATTEMPTS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "k",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"RETRY_MAX_ATTEMPTS": "0",
+			},
+			wantErr: "RETRY_MAX_ATTEMPTS",
+		},
+		{
+			name: "negative RETRY_BACKOFF_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY": "k",
+				"FROM_EMAIL":       "a@b.com",
+				"FROM_NAME":        "A",
+				"RETRY_BACKOFF_MS": "-5",
+			},
+			wantErr: "RETRY_BACKOFF_MS",
+		},
 	}
 
 	for _, tt := range tests {
@@ -279,6 +369,15 @@ func TestLoad(t *testing.T) {
 			}
 			if tt.wantMaxUploadSizeMB != 0 && cfg.MaxUploadSizeMB != tt.wantMaxUploadSizeMB {
 				t.Errorf("MaxUploadSizeMB = %d, want %d", cfg.MaxUploadSizeMB, tt.wantMaxUploadSizeMB)
+			}
+			if tt.wantTimeoutMS != 0 && cfg.TimeoutMS != tt.wantTimeoutMS {
+				t.Errorf("TimeoutMS = %d, want %d", cfg.TimeoutMS, tt.wantTimeoutMS)
+			}
+			if tt.wantRetryMaxAttempts != 0 && cfg.RetryMaxAttempts != tt.wantRetryMaxAttempts {
+				t.Errorf("RetryMaxAttempts = %d, want %d", cfg.RetryMaxAttempts, tt.wantRetryMaxAttempts)
+			}
+			if tt.wantRetryBackoffMS != 0 && cfg.RetryBackoffMS != tt.wantRetryBackoffMS {
+				t.Errorf("RetryBackoffMS = %d, want %d", cfg.RetryBackoffMS, tt.wantRetryBackoffMS)
 			}
 		})
 	}
