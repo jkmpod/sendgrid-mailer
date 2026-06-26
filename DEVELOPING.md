@@ -123,6 +123,22 @@ The pattern is in `server/handlers/state.go` (or its sibling files):
 
 See `.claude/skills/sse-streaming.md` for the full template.
 
+## Recipe: bounded retry with exponential backoff
+
+`mailer/retry.go` holds two package-internal helpers used by `SendOne`:
+
+- `isTransient(statusCode, err)` — returns true for network/context errors, 429,
+  and >=500. Returns false for other 4xx (permanent client errors that must not
+  be retried).
+- `backoff(attempt, baseMS)` — deterministic exponential delay (`base * 2^(attempt-1)`)
+  capped at 5 s. No jitter (deterministic so tests can assert exact values).
+
+`SendOne` wraps each attempt in `context.WithTimeout` (using `Emailer.TimeoutMS`)
+and calls `client.SendWithContext`. On a transient error it logs and sleeps before
+the next attempt. On a permanent error or after all attempts are exhausted it
+returns the same errors as the single-attempt implementation so callers are
+unaffected.
+
 ## Recipe: mock SendGrid in tests
 
 Real SendGrid calls are forbidden in tests. Use `httptest.NewServer` to stand

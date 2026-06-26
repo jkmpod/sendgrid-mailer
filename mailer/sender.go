@@ -1,6 +1,7 @@
 package mailer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -64,33 +65,73 @@ func (e *Emailer) SendOne(
 	client := e.client
 	e.mu.Unlock()
 
-	resp, err := client.Send(msg)
-	if err != nil {
-		log.Printf("[mailer] SendOne: API request failed for %s: %v", recipient.Email, err)
-		return nil, fmt.Errorf("SendGrid API request failed: %w", err)
+	attempts := e.RetryMaxAttempts
+	if attempts < 1 {
+		attempts = 1
 	}
-
-	log.Printf("[mailer] SendOne: status=%d recipient=%s", resp.StatusCode, recipient.Email)
-
-	result := make(map[string]interface{})
-	result["status_code"] = resp.StatusCode
-	result["headers"] = resp.Headers
-
-	if resp.Body != "" {
-		var body interface{}
-		if err := json.Unmarshal([]byte(resp.Body), &body); err != nil {
-			result["body"] = resp.Body
+	for attempt := 1; attempt <= attempts; attempt++ {
+		var ctx context.Context
+		var cancel context.CancelFunc
+		if e.TimeoutMS > 0 {
+			ctx, cancel = context.WithTimeout(context.Background(), time.Duration(e.TimeoutMS)*time.Millisecond)
 		} else {
-			result["body"] = body
+			ctx, cancel = context.WithCancel(context.Background())
 		}
-	}
+		resp, err := client.SendWithContext(ctx, msg)
+		cancel()
 
-	if resp.StatusCode >= 400 {
+		var statusCode int
+		if err == nil {
+			statusCode = resp.StatusCode
+		}
+
+		// Success path: parse and return.
+		if err == nil && statusCode < 400 {
+			log.Printf("[mailer] SendOne: status=%d recipient=%s", resp.StatusCode, recipient.Email)
+			result := make(map[string]interface{})
+			result["status_code"] = resp.StatusCode
+			result["headers"] = resp.Headers
+			if resp.Body != "" {
+				var body interface{}
+				if jsonErr := json.Unmarshal([]byte(resp.Body), &body); jsonErr != nil {
+					result["body"] = resp.Body
+				} else {
+					result["body"] = body
+				}
+			}
+			return result, nil
+		}
+
+		// Retry if this is not the last attempt and the failure is transient.
+		if attempt < attempts && isTransient(statusCode, err) {
+			log.Printf("[mailer] SendOne: transient error on attempt %d/%d for %s (status %d, err: %v); retrying", attempt, attempts, recipient.Email, statusCode, err)
+			time.Sleep(backoff(attempt, e.RetryBackoffMS))
+			continue
+		}
+
+		// Final failure: permanent error or last attempt.
+		if err != nil {
+			log.Printf("[mailer] SendOne: API request failed for %s: %v", recipient.Email, err)
+			return nil, fmt.Errorf("SendGrid API request failed: %w", err)
+		}
+		log.Printf("[mailer] SendOne: status=%d recipient=%s", resp.StatusCode, recipient.Email)
+		result := make(map[string]interface{})
+		result["status_code"] = resp.StatusCode
+		result["headers"] = resp.Headers
+		if resp.Body != "" {
+			var body interface{}
+			if jsonErr := json.Unmarshal([]byte(resp.Body), &body); jsonErr != nil {
+				result["body"] = resp.Body
+			} else {
+				result["body"] = body
+			}
+		}
 		log.Printf("[mailer] SendOne: ERROR status=%d recipient=%s body=%s", resp.StatusCode, recipient.Email, resp.Body)
 		return result, fmt.Errorf("SendGrid returned status %d", resp.StatusCode)
 	}
 
-	return result, nil
+	// Unreachable: the loop body always returns on the last attempt.
+	return nil, fmt.Errorf("SendGrid API request failed: all retries exhausted")
 }
 
 // SendTest sends a test email to each address in testEmails, personalised

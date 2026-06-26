@@ -16,11 +16,17 @@ type Emailer struct {
 	MaxBatchSize int
 	// RateDelayMS is the delay in milliseconds between per-recipient sends.
 	RateDelayMS int
-	mu          sync.Mutex // guards fromEmail, fromName, and client
-	apiKey      string
-	fromEmail   string
-	fromName    string
-	client      *sendgrid.Client
+	// TimeoutMS is the per-request HTTP timeout in milliseconds for one SendGrid call.
+	TimeoutMS int
+	// RetryMaxAttempts is the maximum number of send attempts per recipient including the first.
+	RetryMaxAttempts int
+	// RetryBackoffMS is the base backoff delay in milliseconds used for exponential retry.
+	RetryBackoffMS int
+	mu             sync.Mutex // guards fromEmail, fromName, and client
+	apiKey         string
+	fromEmail      string
+	fromName       string
+	client         *sendgrid.Client
 }
 
 // SetFrom updates the sender address at runtime. Thread-safe.
@@ -52,11 +58,14 @@ func (e *Emailer) SetBaseURL(baseURL string) {
 // SendGrid client using the API key from cfg.
 func NewEmailer(cfg *config.Config) *Emailer {
 	return &Emailer{
-		MaxBatchSize: cfg.MaxBatchSize,
-		RateDelayMS:  cfg.RateDelayMS,
-		apiKey:       cfg.APIKey,
-		fromEmail:    cfg.FromEmail,
-		fromName:     cfg.FromName,
-		client:       sendgrid.NewSendClient(cfg.APIKey),
+		MaxBatchSize:     cfg.MaxBatchSize,
+		RateDelayMS:      cfg.RateDelayMS,
+		TimeoutMS:        cfg.TimeoutMS,
+		RetryMaxAttempts: cfg.RetryMaxAttempts,
+		RetryBackoffMS:   cfg.RetryBackoffMS,
+		apiKey:           cfg.APIKey,
+		fromEmail:        cfg.FromEmail,
+		fromName:         cfg.FromName,
+		client:           sendgrid.NewSendClient(cfg.APIKey),
 	}
 }
