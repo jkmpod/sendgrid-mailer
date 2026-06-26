@@ -187,6 +187,16 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
+		if len(req.CC) > 0 || len(req.BCC) > 0 {
+			if err := sseEvent(w, "warning", map[string]interface{}{
+				"message": "CC/BCC is set — sends take longer and may rarely need a re-trigger if progress stalls.",
+			}); err != nil {
+				log.Printf("[send] client disconnected before send: %v", err)
+				return
+			}
+			flusher.Flush()
+		}
+
 		total := len(recipients)
 		var sent, failed int
 		type failureJSON struct {

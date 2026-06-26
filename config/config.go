@@ -19,6 +19,12 @@ type Config struct {
 	MaxBatchSize int
 	// RateDelayMS is the inter-batch sleep in milliseconds (env: RATE_DELAY_MS, default 100).
 	RateDelayMS int
+	// TimeoutMS is the per-request HTTP timeout in milliseconds for one SendGrid call (env: SENDGRID_TIMEOUT_MS, default 15000).
+	TimeoutMS int
+	// RetryMaxAttempts is the maximum number of send attempts per recipient including the first (env: RETRY_MAX_ATTEMPTS, default 3).
+	RetryMaxAttempts int
+	// RetryBackoffMS is the base backoff delay in milliseconds used for exponential retry (env: RETRY_BACKOFF_MS, default 500).
+	RetryBackoffMS int
 	// TestMode, when true, diverts every send to TestEmails (env: TEST_MODE, default false).
 	TestMode bool
 	// TestEmails is the comma-separated test address list (env: TEST_EMAILS). Required when TestMode is true.
@@ -68,6 +74,42 @@ func Load() (*Config, error) {
 		rateDelayMS = n
 	}
 
+	timeoutMS := 15000
+	if v := strings.TrimSpace(os.Getenv("SENDGRID_TIMEOUT_MS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("SENDGRID_TIMEOUT_MS must be a valid integer: %w", err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("SENDGRID_TIMEOUT_MS must be a positive integer, got %d", n)
+		}
+		timeoutMS = n
+	}
+
+	retryMaxAttempts := 3
+	if v := strings.TrimSpace(os.Getenv("RETRY_MAX_ATTEMPTS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("RETRY_MAX_ATTEMPTS must be a valid integer: %w", err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("RETRY_MAX_ATTEMPTS must be a positive integer, got %d", n)
+		}
+		retryMaxAttempts = n
+	}
+
+	retryBackoffMS := 500
+	if v := strings.TrimSpace(os.Getenv("RETRY_BACKOFF_MS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("RETRY_BACKOFF_MS must be a valid integer: %w", err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("RETRY_BACKOFF_MS must be a positive integer, got %d", n)
+		}
+		retryBackoffMS = n
+	}
+
 	testMode := true
 	if v := strings.TrimSpace(os.Getenv("TEST_MODE")); v != "" {
 		b, err := strconv.ParseBool(v)
@@ -107,15 +149,18 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		APIKey:          apiKey,
-		FromEmail:       fromEmail,
-		FromName:        fromName,
-		MaxBatchSize:    maxBatchSize,
-		RateDelayMS:     rateDelayMS,
-		TestMode:        testMode,
-		TestEmails:      testEmails,
-		Port:            port,
-		MessagesURL:     messagesURL,
-		MaxUploadSizeMB: maxUploadSizeMB,
+		APIKey:           apiKey,
+		FromEmail:        fromEmail,
+		FromName:         fromName,
+		MaxBatchSize:     maxBatchSize,
+		RateDelayMS:      rateDelayMS,
+		TimeoutMS:        timeoutMS,
+		RetryMaxAttempts: retryMaxAttempts,
+		RetryBackoffMS:   retryBackoffMS,
+		TestMode:         testMode,
+		TestEmails:       testEmails,
+		Port:             port,
+		MessagesURL:      messagesURL,
+		MaxUploadSizeMB:  maxUploadSizeMB,
 	}, nil
 }

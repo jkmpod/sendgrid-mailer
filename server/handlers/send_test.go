@@ -548,6 +548,74 @@ func TestHandleSend_TemplateValidation(t *testing.T) {
 	}
 }
 
+func TestHandleSend_CCBCCWarning(t *testing.T) {
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer sgServer.Close()
+
+	csvPath := writeTempCSV(t, "email,name\nalice@example.com,Alice\n")
+
+	cfg := &config.Config{
+		APIKey:       "SG.test-key",
+		FromEmail:    "test@example.com",
+		FromName:     "Test",
+		MaxBatchSize: 1000,
+		RateDelayMS:  0,
+		TestMode:     false,
+	}
+	e := mailer.NewEmailer(cfg)
+	e.SetBaseURL(sgServer.URL)
+
+	tests := []struct {
+		name        string
+		bodyExtra   string // extra JSON fields appended inside the object
+		wantWarning bool
+	}{
+		{
+			name:        "cc present triggers warning",
+			bodyExtra:   `,"cc":["boss@example.com"]`,
+			wantWarning: true,
+		},
+		{
+			name:        "bcc present triggers warning",
+			bodyExtra:   `,"bcc":["hidden@example.com"]`,
+			wantWarning: true,
+		},
+		{
+			name:        "neither cc nor bcc, no warning",
+			bodyExtra:   "",
+			wantWarning: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `{"subject":"Hello","template":"<p>Hi {{.Name}}</p>","filePath":"` +
+				strings.ReplaceAll(csvPath, `\`, `\\`) + `"` + tt.bodyExtra + `}`
+
+			req := httptest.NewRequest("POST", "/send", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			handler := HandleSend(e, cfg)
+			handler.ServeHTTP(rr, req)
+
+			responseBody := rr.Body.String()
+
+			if tt.wantWarning {
+				if !strings.Contains(responseBody, "event: warning") {
+					t.Errorf("expected 'event: warning' in response; got: %s", responseBody)
+				}
+			} else {
+				if strings.Contains(responseBody, "event: warning") {
+					t.Errorf("unexpected 'event: warning' in response; got: %s", responseBody)
+				}
+			}
+		})
+	}
+}
+
 func TestHandleSend_LastSubjectNotUpdatedOnAllFailure(t *testing.T) {
 	SetLastSubject("previous subject")
 

@@ -6,21 +6,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
 // newTestEmailer creates an Emailer whose SendGrid client points at the given
-// test server instead of the real API.
+// test server instead of the real API. It uses fast retry settings so that
+// retry-related tests complete quickly.
 func newTestEmailer(serverURL string, batchSize int) *Emailer {
 	cfg := &config.Config{
-		APIKey:       "SG.test-key",
-		FromEmail:    "test@example.com",
-		FromName:     "Test Sender",
-		MaxBatchSize: batchSize,
-		RateDelayMS:  0, // no delay in tests
+		APIKey:           "SG.test-key",
+		FromEmail:        "test@example.com",
+		FromName:         "Test Sender",
+		MaxBatchSize:     batchSize,
+		RateDelayMS:      0, // no delay in tests
+		TimeoutMS:        2000,
+		RetryMaxAttempts: 3,
+		RetryBackoffMS:   1, // 1 ms backoff keeps tests fast
 	}
 	e := NewEmailer(cfg)
 	e.SetBaseURL(serverURL)
@@ -411,5 +417,97 @@ func TestSendTest_CategoriesForwarded(t *testing.T) {
 	}
 	if len(cats) != 1 || cats[0].(string) != "test-category" {
 		t.Errorf("categories = %v, want [test-category]", cats)
+	}
+}
+
+func TestSendOne_RetryOn500ThenSuccess(t *testing.T) {
+	// The mock returns 500 twice then 202. With RetryMaxAttempts=3 the third
+	// attempt succeeds, so SendOne must return nil error and call count == 3.
+	var callCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	_, err := e.SendOne(recipient, "Hello", "<p>Hi {{.Name}}</p>", nil, nil, nil)
+	if err != nil {
+		t.Errorf("expected success after retries, got error: %v", err)
+	}
+	if got := atomic.LoadInt32(&callCount); got != 3 {
+		t.Errorf("call count = %d, want 3", got)
+	}
+}
+
+func TestSendOne_NoPermanentRetryOn400(t *testing.T) {
+	// A 400 is a permanent client error and must not be retried.
+	// Exactly one call should be made.
+	var callCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	_, err := e.SendOne(recipient, "Hello", "<p>Hi {{.Name}}</p>", nil, nil, nil)
+	if err == nil {
+		t.Error("expected error for 400 response, got nil")
+	}
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Errorf("call count = %d, want 1 (400 must not be retried)", got)
+	}
+}
+
+func TestSendOne_TimeoutRetriedThenFails(t *testing.T) {
+	// The handler sleeps longer than TimeoutMS so every attempt times out.
+	// With RetryMaxAttempts=2 there should be exactly 2 calls, and SendOne
+	// must return a non-nil error promptly (well within 2*TimeoutMS + backoff).
+	var callCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIKey:           "SG.test-key",
+		FromEmail:        "test@example.com",
+		FromName:         "Test Sender",
+		MaxBatchSize:     1000,
+		RateDelayMS:      0,
+		TimeoutMS:        50,
+		RetryMaxAttempts: 2,
+		RetryBackoffMS:   1,
+	}
+	e := NewEmailer(cfg)
+	e.SetBaseURL(server.URL)
+
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	start := time.Now()
+	_, err := e.SendOne(recipient, "Hello", "<p>Hi {{.Name}}</p>", nil, nil, nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Error("expected timeout error, got nil")
+	}
+	if got := atomic.LoadInt32(&callCount); got != 2 {
+		t.Errorf("call count = %d, want 2", got)
+	}
+	// Generous upper bound: 2*TimeoutMS + backoff + margin = 200ms + extra.
+	// The key property is that it returns far sooner than 2*200ms (the sleep).
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("SendOne took %v, want < 500ms (should fail fast on timeout)", elapsed)
 	}
 }

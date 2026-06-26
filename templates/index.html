@@ -932,6 +932,14 @@
       return;
     }
 
+    if (event === "warning") {
+      const div = document.createElement("div");
+      div.className = "status warning";
+      div.textContent = parsed.message;
+      sendResult.appendChild(div);
+      show(sendResult);
+    }
+
     if (event === "progress") {
       progressFill.style.width = Math.round(((parsed.sent + parsed.failed) / parsed.total) * 100) + "%";
       sendStatus.textContent = "Sent " + parsed.sent + " / " + parsed.total +

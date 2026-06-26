@@ -56,7 +56,10 @@ otherwise.
 - **Configuration** is loaded once at startup from environment variables (see
   `.env.example`) into `config.Config`. Most values can be overridden at
   runtime via `POST /config`; overrides are stored in mutex-protected
-  package-level variables in `server/handlers` and lost on restart.
+  package-level variables in `server/handlers` and lost on restart. The
+  send-resilience knobs (`SENDGRID_TIMEOUT_MS`, `RETRY_MAX_ATTEMPTS`,
+  `RETRY_BACKOFF_MS`) are config-time values read here; README owns the full
+  table.
 - **State sharing across handlers** uses package-level variables protected by
   `sync.Mutex`. Each shared variable has a getter and setter that lock and
   unlock around access. Examples: `lastSubject`, `lastColumns`, `lastFilePath`,
@@ -68,13 +71,29 @@ otherwise.
   attached per message, so CC/BCC reliably receive a copy of *every*
   recipient's email. The trade-off is one API call per recipient (no
   multi-recipient batching), paced by `RATE_DELAY_MS` between sends.
+  Batching remains rejected — including as a timeout fix — because SendGrid
+  shares one HTML body across personalizations, which is incompatible with
+  per-recipient rendered bodies and would re-introduce the substitution-token
+  mangling bug.
 - **`MAX_BATCH_SIZE` is retained for backward compatibility only.** It no
   longer governs SendGrid API batching — the app sends one message per
   recipient regardless of its value. Operators should not expect it to change
   recipients-per-call.
+- **Each SendGrid call is bounded by a per-request timeout**
+  (`SENDGRID_TIMEOUT_MS`) applied via `context.WithTimeout` around
+  `client.SendWithContext`; without it a stalled connection could hang
+  indefinitely. Transient failures — network/timeout errors, HTTP 429, and
+  5xx — are retried per recipient with bounded exponential backoff
+  (`RETRY_MAX_ATTEMPTS`, `RETRY_BACKOFF_MS`); permanent 4xx (e.g. 400/401) are
+  not retried. Retry lives inside `SendOne`, so `SendBulk` and `SendTest`
+  inherit it. `RATE_DELAY_MS` pacing between recipients is unchanged and
+  independent of backoff within a recipient.
 - **Long-running sends** stream progress to the browser over Server-Sent
   Events (`text/event-stream`), one update per recipient. The connection is
-  held open by `HandleSend` for the duration of the send.
+  held open by `HandleSend` for the duration of the send. When a live send
+  includes CC or BCC, the server first emits a `warning` SSE event and the UI
+  shows a banner noting such sends take longer and may rarely need
+  re-triggering if progress stalls.
 - **SendGrid API calls** go through the `mailer.Emailer`. In tests, the SendGrid
   base URL is overridden to point at an `httptest.NewServer` — no real network
   calls.
