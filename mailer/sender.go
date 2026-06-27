@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
 	"github.com/jkmpod/sendgrid-mailer/models"
@@ -41,11 +42,25 @@ func (e *Emailer) ValidateSend(recipient models.EmailRecipient, subject, htmlTem
 	return err
 }
 
-// SendOne sends a single email to one recipient. It builds the mail message
-// via BuildMail, calls the SendGrid API, and returns the parsed response body.
-// Optional categories are forwarded to BuildMail and attached at the message
-// level.
+// SendOne sends a single email to one recipient. It calls SendOneWithContext
+// with context.Background().
 func (e *Emailer) SendOne(
+	recipient models.EmailRecipient,
+	subject string,
+	htmlTemplate string,
+	cc []string,
+	bcc []string,
+	categories []string,
+) (map[string]interface{}, error) {
+	return e.SendOneWithContext(context.Background(), recipient, subject, htmlTemplate, cc, bcc, categories)
+}
+
+// SendOneWithContext sends a single email to one recipient, respecting the
+// provided context for cancellation. It builds the mail message via BuildMail,
+// calls the SendGrid API, and returns the parsed response body. Optional
+// categories are forwarded to BuildMail and attached at the message level.
+func (e *Emailer) SendOneWithContext(
+	ctx context.Context,
 	recipient models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
@@ -61,23 +76,25 @@ func (e *Emailer) SendOne(
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
-	e.mu.Lock()
-	client := e.client
-	e.mu.Unlock()
+	client := func() *sendgrid.Client {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.client
+	}()
 
 	attempts := e.RetryMaxAttempts
 	if attempts < 1 {
 		attempts = 1
 	}
 	for attempt := 1; attempt <= attempts; attempt++ {
-		var ctx context.Context
+		var attemptCtx context.Context
 		var cancel context.CancelFunc
 		if e.TimeoutMS > 0 {
-			ctx, cancel = context.WithTimeout(context.Background(), time.Duration(e.TimeoutMS)*time.Millisecond)
+			attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(e.TimeoutMS)*time.Millisecond)
 		} else {
-			ctx, cancel = context.WithCancel(context.Background())
+			attemptCtx, cancel = context.WithCancel(ctx)
 		}
-		resp, err := client.SendWithContext(ctx, msg)
+		resp, err := client.SendWithContext(attemptCtx, msg)
 		cancel()
 
 		var statusCode int
@@ -105,7 +122,15 @@ func (e *Emailer) SendOne(
 		// Retry if this is not the last attempt and the failure is transient.
 		if attempt < attempts && isTransient(statusCode, err) {
 			log.Printf("[mailer] SendOne: transient error on attempt %d/%d for %s (status %d, err: %v); retrying", attempt, attempts, recipient.Email, statusCode, err)
-			time.Sleep(backoff(attempt, e.RetryBackoffMS))
+
+			// Wait with backoff, but abort if parent context is cancelled.
+			timer := time.NewTimer(backoff(attempt, e.RetryBackoffMS))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
 			continue
 		}
 
@@ -134,12 +159,28 @@ func (e *Emailer) SendOne(
 	return nil, fmt.Errorf("SendGrid API request failed: all retries exhausted")
 }
 
-// SendTest sends a test email to each address in testEmails, personalised
-// using data from firstRecipient (as if each test address were that person).
-// The subject is prefixed with "[TEST] ". One SendGrid API call is made per
-// test address, separated by RateDelayMS. Optional categories are forwarded to
-// each SendOne call and attached at the message level.
+// SendTest sends a test email to each address in testEmails. It calls
+// SendTestWithContext with context.Background().
 func (e *Emailer) SendTest(
+	testEmails []string,
+	subject string,
+	htmlTemplate string,
+	firstRecipient models.EmailRecipient,
+	cc []string,
+	bcc []string,
+	categories []string,
+) (SendResult, error) {
+	return e.SendTestWithContext(context.Background(), testEmails, subject, htmlTemplate, firstRecipient, cc, bcc, categories)
+}
+
+// SendTestWithContext sends a test email to each address in testEmails,
+// personalised using data from firstRecipient (as if each test address were
+// that person). The subject is prefixed with "[TEST] ". One SendGrid API call
+// is made per test address, separated by RateDelayMS. Optional categories are
+// forwarded to each SendOne call and attached at the message level. It
+// respects the provided context for cancellation.
+func (e *Emailer) SendTestWithContext(
+	ctx context.Context,
 	testEmails []string,
 	subject string,
 	htmlTemplate string,
@@ -158,7 +199,13 @@ func (e *Emailer) SendTest(
 	var sr SendResult
 	for i, addr := range testEmails {
 		if i > 0 {
-			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
+			timer := time.NewTimer(time.Duration(e.RateDelayMS) * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return sr, ctx.Err()
+			case <-timer.C:
+			}
 		}
 
 		r := models.EmailRecipient{
@@ -167,7 +214,7 @@ func (e *Emailer) SendTest(
 			CustomFields: firstRecipient.CustomFields,
 		}
 
-		_, err := e.SendOne(r, testSubject, htmlTemplate, cc, bcc, categories)
+		_, err := e.SendOneWithContext(ctx, r, testSubject, htmlTemplate, cc, bcc, categories)
 		if err != nil {
 			log.Printf("[mailer] SendTest: failed for %s: %v", addr, err)
 			sr.TotalFailed++
@@ -181,14 +228,26 @@ func (e *Emailer) SendTest(
 	return sr, nil
 }
 
-// SendBulk iterates over recipients and sends one email per recipient via
-// SendOne. It does NOT stop on a per-recipient error — partial success is a
-// valid and expected outcome. A time.Sleep of RateDelayMS milliseconds is
-// inserted between sends (skipped before the first). Per-recipient template
-// errors are treated as recipient failures and recorded in Failures; no
-// top-level error is returned. Optional categories are forwarded to every
-// SendOne call and attached at the message level.
+// SendBulk iterates over recipients and sends one email per recipient. It
+// calls SendBulkWithContext with context.Background().
 func (e *Emailer) SendBulk(
+	recipients []models.EmailRecipient,
+	subject string,
+	htmlTemplate string,
+	cc []string,
+	bcc []string,
+	categories []string,
+) (SendResult, error) {
+	return e.SendBulkWithContext(context.Background(), recipients, subject, htmlTemplate, cc, bcc, categories)
+}
+
+// SendBulkWithContext iterates over recipients and sends one email per
+// recipient via SendOneWithContext. It does NOT stop on a per-recipient error
+// — partial success is a valid and expected outcome. A delay of RateDelayMS
+// milliseconds is inserted between sends (skipped before the first). It
+// respects the provided context for cancellation.
+func (e *Emailer) SendBulkWithContext(
+	ctx context.Context,
 	recipients []models.EmailRecipient,
 	subject string,
 	htmlTemplate string,
@@ -202,10 +261,16 @@ func (e *Emailer) SendBulk(
 
 	for i, r := range recipients {
 		if i > 0 {
-			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
+			timer := time.NewTimer(time.Duration(e.RateDelayMS) * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return sr, ctx.Err()
+			case <-timer.C:
+			}
 		}
 
-		_, err := e.SendOne(r, subject, htmlTemplate, cc, bcc, categories)
+		_, err := e.SendOneWithContext(ctx, r, subject, htmlTemplate, cc, bcc, categories)
 		if err != nil {
 			sr.TotalFailed++
 			sr.Failures = append(sr.Failures, RecipientError{Email: r.Email, Err: err})
