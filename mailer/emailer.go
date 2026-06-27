@@ -22,11 +22,13 @@ type Emailer struct {
 	RetryMaxAttempts int
 	// RetryBackoffMS is the base backoff delay in milliseconds used for exponential retry.
 	RetryBackoffMS int
-	mu             sync.Mutex // guards fromEmail, fromName, and client
-	apiKey         string
-	fromEmail      string
-	fromName       string
-	client         *sendgrid.Client
+	// RetryAfterCapMS caps how long a 429 Retry-After header is honoured, in milliseconds.
+	RetryAfterCapMS int
+	mu              sync.Mutex // guards fromEmail, fromName, and client
+	apiKey          string
+	fromEmail       string
+	fromName        string
+	client          *sendgrid.Client
 }
 
 // SetFrom updates the sender address at runtime. Thread-safe.
@@ -63,6 +65,7 @@ func NewEmailer(cfg *config.Config) *Emailer {
 		TimeoutMS:        cfg.TimeoutMS,
 		RetryMaxAttempts: cfg.RetryMaxAttempts,
 		RetryBackoffMS:   cfg.RetryBackoffMS,
+		RetryAfterCapMS:  cfg.RetryAfterCapMS,
 		apiKey:           cfg.APIKey,
 		fromEmail:        cfg.FromEmail,
 		fromName:         cfg.FromName,

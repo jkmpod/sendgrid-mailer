@@ -1,6 +1,10 @@
 package mailer
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // isTransient reports whether a send attempt should be retried.
 // It returns true when err is non-nil (network error or context timeout),
@@ -12,6 +16,42 @@ func isTransient(statusCode int, err error) bool {
 		return true
 	}
 	return statusCode == 429 || statusCode >= 500
+}
+
+// retryAfter parses the Retry-After response header (the integer-seconds form
+// SendGrid returns on a 429) and reports whether a usable delay was found. The
+// HTTP-date form is not parsed and yields ok=false (the caller then falls back
+// to exponential backoff); a missing, non-integer, or non-positive value also
+// yields ok=false.
+func retryAfter(headers map[string][]string) (time.Duration, bool) {
+	if headers == nil {
+		return 0, false
+	}
+	vals := headers["Retry-After"]
+	if len(vals) == 0 {
+		return 0, false
+	}
+	secs, err := strconv.Atoi(strings.TrimSpace(vals[0]))
+	if err != nil || secs <= 0 {
+		return 0, false
+	}
+	return time.Duration(secs) * time.Second, true
+}
+
+// nextDelay returns how long to wait before the next retry attempt. For a 429
+// carrying a usable Retry-After header it respects that value, capped at capMS
+// milliseconds; for every other transient case it uses exponential backoff.
+func nextDelay(statusCode int, headers map[string][]string, attempt, baseMS, capMS int) time.Duration {
+	if statusCode == 429 {
+		if d, ok := retryAfter(headers); ok {
+			capDur := time.Duration(capMS) * time.Millisecond
+			if d > capDur {
+				d = capDur
+			}
+			return d
+		}
+	}
+	return backoff(attempt, baseMS)
 }
 
 // backoff returns the delay to wait before attempt number attempt (1-indexed).

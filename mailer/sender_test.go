@@ -27,6 +27,7 @@ func newTestEmailer(serverURL string, batchSize int) *Emailer {
 		TimeoutMS:        2000,
 		RetryMaxAttempts: 3,
 		RetryBackoffMS:   1, // 1 ms backoff keeps tests fast
+		RetryAfterCapMS:  30000,
 	}
 	e := NewEmailer(cfg)
 	e.SetBaseURL(serverURL)
@@ -489,6 +490,7 @@ func TestSendOne_TimeoutRetriedThenFails(t *testing.T) {
 		TimeoutMS:        50,
 		RetryMaxAttempts: 2,
 		RetryBackoffMS:   1,
+		RetryAfterCapMS:  30000,
 	}
 	e := NewEmailer(cfg)
 	e.SetBaseURL(server.URL)
@@ -509,5 +511,40 @@ func TestSendOne_TimeoutRetriedThenFails(t *testing.T) {
 	// The key property is that it returns far sooner than 2*200ms (the sleep).
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("SendOne took %v, want < 500ms (should fail fast on timeout)", elapsed)
+	}
+}
+
+func TestSendOne_429HonorsRetryAfter(t *testing.T) {
+	// The mock returns 429 with Retry-After: 1 on the first call, then 202.
+	// With a 1ms backoff but a 1s Retry-After, the elapsed time must be >= ~900ms,
+	// proving the Retry-After header was honoured over the static backoff.
+	var callCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	start := time.Now()
+	_, err := e.SendOne(recipient, "Hello", "<p>Hi {{.Name}}</p>", nil, nil, nil)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("expected success after retry, got error: %v", err)
+	}
+	if got := atomic.LoadInt32(&callCount); got != 2 {
+		t.Errorf("call count = %d, want 2", got)
+	}
+	// The 1s Retry-After must have been honoured — elapsed must be >= ~900ms.
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("elapsed = %v, want >= 900ms (Retry-After: 1 must be honoured)", elapsed)
 	}
 }
