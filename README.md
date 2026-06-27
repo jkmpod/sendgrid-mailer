@@ -7,7 +7,7 @@ A self-hosted Go web app for sending bulk email via the SendGrid API. Upload a C
 - **CSV upload** — drag-and-drop a `.csv` file; the app detects columns automatically and shows a preview
 - **Template editor** — compose HTML with `{{.ColumnName}}` placeholders; click column chips to insert tags at the cursor
 - **Bulk sending** — each recipient is sent as its own email, paced by a configurable rate delay
-- **Network resilience** — each send has a bounded request timeout, and transient failures (network/timeout, HTTP 429, 5xx) are retried automatically with exponential backoff; permanent errors are not retried
+- **Network resilience** — each send has a bounded request timeout, and transient failures (network/timeout, HTTP 429, 5xx) are retried automatically with exponential backoff; a 429 carrying a `Retry-After` header is respected up to `RETRY_AFTER_CAP_MS`, and permanent errors are not retried
 - **CC / BCC** — any CC/BCC addresses receive a copy of every recipient's email. Such sends take longer and show a warning that they may occasionally need re-triggering if progress stalls
 - **Real-time progress** — per-recipient results stream to the browser via Server-Sent Events (SSE)
 - **Partial failure handling** — if some sends fail, the rest still send; per-recipient errors are reported
@@ -47,6 +47,7 @@ All configuration is via environment variables. A `.env` file in the project roo
 | `SENDGRID_TIMEOUT_MS` | No | `15000` | Per-request HTTP timeout for one SendGrid call, in milliseconds |
 | `RETRY_MAX_ATTEMPTS` | No | `3` | Maximum send attempts per recipient (including the first) on transient failures |
 | `RETRY_BACKOFF_MS` | No | `500` | Base delay in milliseconds for exponential backoff between retries |
+| `RETRY_AFTER_CAP_MS` | No | `30000` | Caps how long a 429 `Retry-After` response header is respected, in milliseconds (must be a positive integer) |
 | `PORT` | No | `8080` | HTTP server listen port |
 | `TEST_MODE` | No | `false` | When `true`, emails go only to `TEST_EMAILS` |
 | `TEST_EMAILS` | When `TEST_MODE=true` | — | Comma-separated list of test recipient addresses |
