@@ -29,6 +29,35 @@ fast-forwards to the latest remote commit, attempts a safe delete of the
 feature branch you were on, and prunes stale remote-tracking refs. The script
 works in Git Bash on Windows and in standard Linux/macOS bash.
 
+## Secret scanning
+
+The repo uses [gitleaks](https://github.com/gitleaks/gitleaks) via the
+[pre-commit](https://pre-commit.com/) framework to block commits that contain
+secrets (API keys, tokens, etc.).
+
+**First-time setup** (the setup scripts do this automatically):
+
+```bash
+pip install pre-commit      # or: pipx install pre-commit / brew install pre-commit
+pre-commit install          # wires the hook into .git/hooks/pre-commit
+```
+
+Once installed, gitleaks runs automatically on every `git commit`, checking
+only the staged diff. A commit is blocked if a secret pattern is detected.
+
+**Run against the whole tree** (useful after adding new files or config):
+
+```bash
+pre-commit run --all-files
+```
+
+The hook uses `.gitleaks.toml` at the repo root — the same config file that
+runs in the **Secret Scan** CI workflow on every push and pull request. Keeping
+one shared config ensures local and CI detection rules stay identical.
+
+If gitleaks reports a false positive (e.g. a placeholder or test fixture), add
+an allowlist entry to `.gitleaks.toml` rather than bypassing the hook.
+
 ## Reusable skills
 
 Each file under `.claude/skills/` is a deeper write-up of one pattern used in

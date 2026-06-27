@@ -55,6 +55,21 @@ info "Verifying the project builds..."
 go build ./... >/dev/null 2>&1 || error "Build failed. Check that Go 1.23+ is installed."
 ok "Build succeeded"
 
+# ── 5. Install pre-commit hook ────────────────────────────────────────────────
+info "Installing pre-commit hook (gitleaks)..."
+if command -v pre-commit &>/dev/null; then
+    pre-commit install
+    ok "pre-commit hook installed"
+else
+    echo ""
+    echo "  pre-commit is not installed — skipping hook installation."
+    echo "  Install it and re-run this script to enable local secret scanning:"
+    echo "    pipx install pre-commit   (recommended)"
+    echo "    pip install pre-commit"
+    echo "    brew install pre-commit   (macOS)"
+    echo ""
+fi
+
 echo ""
 echo "Setup complete!"
 echo ""

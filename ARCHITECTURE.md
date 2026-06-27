@@ -51,6 +51,10 @@ otherwise.
 | `github.com/sendgrid/rest` | Transitive dependency of `sendgrid-go` |
 | `github.com/joho/godotenv` | `.env` loader, used in `main.go` only |
 
+External CI and development security tooling — gitleaks, CodeQL, and the
+`pre-commit` framework — is **exempt** from this allowlist: none of it is a Go
+module dependency, so it does not affect the package graph above.
+
 ## Runtime model
 
 - **Configuration** is loaded once at startup from environment variables (see

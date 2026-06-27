@@ -51,6 +51,15 @@ All configuration is via environment variables. A `.env` file in the project roo
 | `TEST_MODE` | No | `false` | When `true`, emails go only to `TEST_EMAILS` |
 | `TEST_EMAILS` | When `TEST_MODE=true` | — | Comma-separated list of test recipient addresses |
 
+## Security
+
+Secrets — your `SENDGRID_API_KEY` above all — live **only** in the gitignored `.env` file; never commit them. Several layers guard against an accidental leak:
+
+- **Local commits** are scanned by [gitleaks](https://github.com/gitleaks/gitleaks) via a `pre-commit` hook, which blocks a commit that contains a secret.
+- **CI** runs gitleaks on every push and pull request (the *Secret Scan* workflow, over full history).
+- **GitHub push protection** is enabled, rejecting pushes with a recognised secret at GitHub's edge.
+- **CodeQL** provides static analysis of the Go code on every push/PR and weekly.
+
 ## Project Structure
 
 ```
