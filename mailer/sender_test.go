@@ -1,6 +1,7 @@
 package mailer
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -509,5 +510,27 @@ func TestSendOne_TimeoutRetriedThenFails(t *testing.T) {
 	// The key property is that it returns far sooner than 2*200ms (the sleep).
 	if elapsed > 500*time.Millisecond {
 		t.Errorf("SendOne took %v, want < 500ms (should fail fast on timeout)", elapsed)
+	}
+}
+
+func TestSendOne_RespectsContextCancellation(t *testing.T) {
+	// The handler sleeps. We cancel the context before it finishes.
+	// SendOneWithContext must return ctx.Err() promptly.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	e := newTestEmailer(server.URL, 1000)
+	recipient := models.EmailRecipient{Email: "alice@example.com", Name: "Alice"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel almost immediately.
+	time.AfterFunc(20*time.Millisecond, cancel)
+
+	_, err := e.SendOneWithContext(ctx, recipient, "Hello", "<p>Hi</p>", nil, nil, nil)
+	if err == nil {
+		t.Error("expected error from cancelled context, got nil")
 	}
 }

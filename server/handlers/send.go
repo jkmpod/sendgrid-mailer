@@ -214,10 +214,17 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			}
 
 			if i > 0 {
-				time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
+				timer := time.NewTimer(time.Duration(e.RateDelayMS) * time.Millisecond)
+				select {
+				case <-r.Context().Done():
+					timer.Stop()
+					log.Printf("[send] client disconnected during rate delay")
+					return
+				case <-timer.C:
+				}
 			}
 
-			_, err := e.SendOne(rec, req.Subject, req.Template, req.CC, req.BCC, categories)
+			_, err := e.SendOneWithContext(r.Context(), rec, req.Subject, req.Template, req.CC, req.BCC, categories)
 			if err != nil {
 				failed++
 				failures = append(failures, failureJSON{Email: rec.Email, Error: err.Error()})
@@ -264,12 +271,14 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			failures = []failureJSON{}
 		}
 
-		_ = sseEvent(w, "done", map[string]interface{}{
+		if err := sseEvent(w, "done", map[string]interface{}{
 			"totalSent":   sent,
 			"totalFailed": failed,
 			"failures":    failures,
 			"testMode":    false,
-		})
+		}); err != nil {
+			log.Printf("[send] failed to send done event: %v", err)
+		}
 		flusher.Flush()
 	}
 }
