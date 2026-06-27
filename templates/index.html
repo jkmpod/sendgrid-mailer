@@ -988,7 +988,9 @@
         logList.appendChild(testEntry);
       }
 
-      sendResult.innerHTML = html;
+      const doneDiv = document.createElement("div");
+      doneDiv.innerHTML = html;
+      sendResult.appendChild(doneDiv);
       show(sendResult);
       sendStatus.textContent = wasTestMode ? "Test complete" : "Complete";
       sendStatus.className = "status success";

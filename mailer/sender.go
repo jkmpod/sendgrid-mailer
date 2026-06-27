@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
 	"github.com/jkmpod/sendgrid-mailer/models"
@@ -61,9 +62,11 @@ func (e *Emailer) SendOne(
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
-	e.mu.Lock()
-	client := e.client
-	e.mu.Unlock()
+	client := func() *sendgrid.Client {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.client
+	}()
 
 	attempts := e.RetryMaxAttempts
 	if attempts < 1 {

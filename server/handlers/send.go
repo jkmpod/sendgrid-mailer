@@ -264,12 +264,14 @@ func HandleSend(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 			failures = []failureJSON{}
 		}
 
-		_ = sseEvent(w, "done", map[string]interface{}{
+		if err := sseEvent(w, "done", map[string]interface{}{
 			"totalSent":   sent,
 			"totalFailed": failed,
 			"failures":    failures,
 			"testMode":    false,
-		})
+		}); err != nil {
+			log.Printf("[send] failed to send done event: %v", err)
+		}
 		flusher.Flush()
 	}
 }
