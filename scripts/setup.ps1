@@ -55,6 +55,20 @@ go build ./... 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { error "Build failed. Check that Go 1.23+ is installed." }
 ok "Build succeeded"
 
+# -- 5. Install pre-commit hook ------------------------------------------------
+info "Installing pre-commit hook (gitleaks)..."
+if (Get-Command pre-commit -ErrorAction SilentlyContinue) {
+    pre-commit install
+    ok "pre-commit hook installed"
+} else {
+    Write-Host ""
+    Write-Host "  pre-commit is not installed - skipping hook installation." -ForegroundColor Yellow
+    Write-Host "  Install it and re-run this script to enable local secret scanning:"
+    Write-Host "    pipx install pre-commit   (recommended)"
+    Write-Host "    pip install pre-commit"
+    Write-Host ""
+}
+
 Write-Host ""
 Write-Host "Setup complete!" -ForegroundColor Green
 Write-Host ""

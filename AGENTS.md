@@ -78,6 +78,8 @@ When reviewing HTTP handlers in `server/handlers/`, verify:
   for empty strings or invalid data.
 - **Semantic HTML:** Prefer `<main>`, `<nav>`, and `<button>` over generic
   `<div>` tags.
+- **Secrets:** No secrets in committed files; `.env` stays gitignored. The
+  gitleaks (Secret Scan) and CodeQL gates must be green before merge.
 
 ## Code style rules
 

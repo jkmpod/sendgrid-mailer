@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known placeholders and test fixtures — not real secrets."
+paths = [
+  '''\.env\.example$''',
+]
+regexes = [
+  '''SG\.x{20,}\.x{20,}''',
+  '''SG\.test-key''',
+]
