@@ -62,8 +62,8 @@ module dependency, so it does not affect the package graph above.
   runtime via `POST /config`; overrides are stored in mutex-protected
   package-level variables in `server/handlers` and lost on restart. The
   send-resilience knobs (`SENDGRID_TIMEOUT_MS`, `RETRY_MAX_ATTEMPTS`,
-  `RETRY_BACKOFF_MS`) are config-time values read here; README owns the full
-  table.
+  `RETRY_BACKOFF_MS`, `RETRY_AFTER_CAP_MS`) are config-time values read here;
+  README owns the full table.
 - **State sharing across handlers** uses package-level variables protected by
   `sync.Mutex`. Each shared variable has a getter and setter that lock and
   unlock around access. Examples: `lastSubject`, `lastColumns`, `lastFilePath`,
@@ -89,8 +89,11 @@ module dependency, so it does not affect the package graph above.
   indefinitely. Transient failures — network/timeout errors, HTTP 429, and
   5xx — are retried per recipient with bounded exponential backoff
   (`RETRY_MAX_ATTEMPTS`, `RETRY_BACKOFF_MS`); permanent 4xx (e.g. 400/401) are
-  not retried. Retry lives inside `SendOne`, so `SendBulk` and `SendTest`
-  inherit it. `RATE_DELAY_MS` pacing between recipients is unchanged and
+  not retried. The one exception to the backoff schedule is a 429 that carries
+  a `Retry-After` header: that delay is respected instead, capped at
+  `RETRY_AFTER_CAP_MS`, so the retry waits out the rate-limit window rather than
+  firing early and failing. Retry lives inside `SendOne`, so `SendBulk` and
+  `SendTest` inherit it. `RATE_DELAY_MS` pacing between recipients is unchanged and
   independent of backoff within a recipient.
 - **Long-running sends** stream progress to the browser over Server-Sent
   Events (`text/event-stream`), one update per recipient. The connection is

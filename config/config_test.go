@@ -12,7 +12,7 @@ func clearEnv(t *testing.T) {
 	keys := []string{
 		"SENDGRID_API_KEY", "FROM_EMAIL", "FROM_NAME",
 		"MAX_BATCH_SIZE", "RATE_DELAY_MS",
-		"SENDGRID_TIMEOUT_MS", "RETRY_MAX_ATTEMPTS", "RETRY_BACKOFF_MS",
+		"SENDGRID_TIMEOUT_MS", "RETRY_MAX_ATTEMPTS", "RETRY_BACKOFF_MS", "RETRY_AFTER_CAP_MS",
 		"TEST_MODE", "TEST_EMAILS",
 		"SENDGRID_MESSAGES_URL", "MAX_UPLOAD_SIZE_MB",
 	}
@@ -40,6 +40,7 @@ func TestLoad(t *testing.T) {
 		wantTimeoutMS        int
 		wantRetryMaxAttempts int
 		wantRetryBackoffMS   int
+		wantRetryAfterCapMS  int
 		wantTestMode         bool
 		wantTestEmails       []string
 		wantMessagesURL      string
@@ -60,6 +61,7 @@ func TestLoad(t *testing.T) {
 			wantTimeoutMS:        15000,
 			wantRetryMaxAttempts: 3,
 			wantRetryBackoffMS:   500,
+			wantRetryAfterCapMS:  30000,
 			wantTestMode:         true,
 			wantMessagesURL:      "https://api.sendgrid.com/v3/messages",
 			wantMaxUploadSizeMB:  10,
@@ -240,6 +242,7 @@ func TestLoad(t *testing.T) {
 				"SENDGRID_TIMEOUT_MS": "30000",
 				"RETRY_MAX_ATTEMPTS":  "5",
 				"RETRY_BACKOFF_MS":    "1000",
+				"RETRY_AFTER_CAP_MS":  "45000",
 			},
 			wantAPIKey:           "SG.key",
 			wantEmail:            "a@b.com",
@@ -249,6 +252,7 @@ func TestLoad(t *testing.T) {
 			wantTimeoutMS:        30000,
 			wantRetryMaxAttempts: 5,
 			wantRetryBackoffMS:   1000,
+			wantRetryAfterCapMS:  45000,
 			wantTestMode:         true,
 		},
 		// 2e: invalid (non-integer) error cases
@@ -312,6 +316,26 @@ func TestLoad(t *testing.T) {
 				"RETRY_BACKOFF_MS": "-5",
 			},
 			wantErr: "RETRY_BACKOFF_MS",
+		},
+		{
+			name: "invalid RETRY_AFTER_CAP_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "k",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"RETRY_AFTER_CAP_MS": "abc",
+			},
+			wantErr: "RETRY_AFTER_CAP_MS",
+		},
+		{
+			name: "non-positive RETRY_AFTER_CAP_MS",
+			env: map[string]string{
+				"SENDGRID_API_KEY":   "k",
+				"FROM_EMAIL":         "a@b.com",
+				"FROM_NAME":          "A",
+				"RETRY_AFTER_CAP_MS": "0",
+			},
+			wantErr: "RETRY_AFTER_CAP_MS",
 		},
 	}
 
@@ -378,6 +402,9 @@ func TestLoad(t *testing.T) {
 			}
 			if tt.wantRetryBackoffMS != 0 && cfg.RetryBackoffMS != tt.wantRetryBackoffMS {
 				t.Errorf("RetryBackoffMS = %d, want %d", cfg.RetryBackoffMS, tt.wantRetryBackoffMS)
+			}
+			if tt.wantRetryAfterCapMS != 0 && cfg.RetryAfterCapMS != tt.wantRetryAfterCapMS {
+				t.Errorf("RetryAfterCapMS = %d, want %d", cfg.RetryAfterCapMS, tt.wantRetryAfterCapMS)
 			}
 		})
 	}
