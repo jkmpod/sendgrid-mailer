@@ -3,3 +3,46 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+
+  # Go quality gate — fires only when staged files include *.go files,
+  # but operates module-wide (pass_filenames: false) so vet/lint/test
+  # see the full picture, not just staged files.
+  - repo: local
+    hooks:
+      - id: go-fmt-s
+        name: gofmt -s
+        # gofmt -s -l exits 0 even when files need reformatting; the wrapper
+        # script fails on non-empty diff output instead.
+        entry: bash scripts/check-gofmt.sh
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: golangci-lint
+        name: golangci-lint
+        # language: golang causes pre-commit to install golangci-lint into its
+        # own cache env on first run — no manual install needed.
+        # Pinned to v1.64.8 (last v1 release, 2025-03-17) to match the repo's
+        # v1-format .golangci.yml (linters-settings: / linters.disable-all).
+        # If .golangci.yml is ever migrated to v2 format, update this to
+        # github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>.
+        entry: golangci-lint run
+        language: golang
+        additional_dependencies:
+          - github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+        types: [go]
+        pass_filenames: false
+
+      - id: go-test-short
+        name: go test -short
+        entry: go test -short ./...
+        language: system
+        types: [go]
+        pass_filenames: false

@@ -58,6 +58,51 @@ one shared config ensures local and CI detection rules stay identical.
 If gitleaks reports a false positive (e.g. a placeholder or test fixture), add
 an allowlist entry to `.gitleaks.toml` rather than bypassing the hook.
 
+## Pre-commit quality gate
+
+In addition to secret scanning, the pre-commit framework runs four Go quality
+checks on every commit that touches a `*.go` file. Each hook operates
+**module-wide** (`pass_filenames: false`) so it sees the full picture, not just
+staged files.
+
+| Hook | Command | What it catches |
+|------|---------|-----------------|
+| `go-fmt-s` | `gofmt -s -d .` (via `scripts/check-gofmt.sh`) | Files that need simplification or canonical formatting |
+| `go-vet` | `go vet ./...` | Suspicious constructs the compiler accepts but are likely wrong |
+| `golangci-lint` | `golangci-lint run` | All linters configured in `.golangci.yml` (misspell UK, gofmt -s, gosec, etc.) |
+| `go-test-short` | `go test -short ./...` | Failing tests (long tests can opt out with `testing.Short()`) |
+
+### golangci-lint self-installs
+
+The `golangci-lint` hook uses `language: golang` in `.pre-commit-config.yaml`
+with a pinned `additional_dependencies` entry. On the first `pre-commit run`,
+pre-commit compiles and caches golangci-lint v1.64.8 automatically — no manual
+install is required. The version is pinned to the last v1 release (2025-03-17)
+because the repo's `.golangci.yml` uses v1 config format (`linters-settings:`
+at the top level). If `.golangci.yml` is ever migrated to v2 format, update the
+`additional_dependencies` entry to `github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>`.
+
+### First-time setup and manual runs
+
+The same `pip install pre-commit` / `pre-commit install` steps above enable the
+quality gate — no extra steps are needed. Run all hooks manually:
+
+```bash
+pre-commit run --all-files
+```
+
+Docs-only changes (e.g. editing `DEVELOPING.md`) do **not** trigger the Go
+hooks because each hook specifies `types: [go]`.
+
+### Relationship to CI
+
+The quality gate mirrors the **Lint & Security** CI job (`golangci-lint`) and
+the **Go CI** job (`go vet`, `go test`). It moves those checks to the commit
+step so the push-time CI failure documented in the *lint-before-push* memory
+note is prevented at source. It complements — but does not replace — running
+`gofmt -s -l .` and `golangci-lint run` before pushing (especially useful if
+the pre-commit hook was bypassed with `--no-verify`).
+
 ## Reusable skills
 
 Each file under `.claude/skills/` is a deeper write-up of one pattern used in
