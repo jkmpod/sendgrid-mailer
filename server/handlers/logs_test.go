@@ -97,13 +97,13 @@ func TestHandleLogs(t *testing.T) {
 			wantAbsent: "BETWEEN",
 		},
 		{
-			name:      "invalid from_date returns 400",
-			query:     "?from_date=invalid-date",
+			name:       "invalid from_date returns 400",
+			query:      "?from_date=invalid-date",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:      "invalid to_date returns 400",
-			query:     "?from_date=2026-03-01T00:00:00Z&to_date=not-a-date",
+			name:       "invalid to_date returns 400",
+			query:      "?from_date=2026-03-01T00:00:00Z&to_date=not-a-date",
 			wantStatus: http.StatusBadRequest,
 		},
 	}
@@ -157,7 +157,7 @@ func TestHandleLogs(t *testing.T) {
 }
 
 func TestHandleLogs_SendGridAPIError(t *testing.T) {
-	// Mock SendGrid API server that returns 401 Unauthorized.
+	// Mock SendGrid API server that returns 401 Unauthorised.
 	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain") // Not JSON
 		w.WriteHeader(http.StatusUnauthorized)

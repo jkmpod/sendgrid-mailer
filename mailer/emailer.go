@@ -10,14 +10,22 @@ import (
 
 // EmailerState captures the current runtime configuration and client.
 type EmailerState struct {
-	FromEmail        string
-	FromName         string
-	RateDelayMS      int
-	TimeoutMS        int
+	// FromEmail is the sender's email address.
+	FromEmail string
+	// FromName is the sender's display name.
+	FromName string
+	// RateDelayMS is the delay in milliseconds between per-recipient sends.
+	RateDelayMS int
+	// TimeoutMS is the per-request HTTP timeout in milliseconds for one SendGrid call.
+	TimeoutMS int
+	// RetryMaxAttempts is the maximum number of send attempts per recipient including the first.
 	RetryMaxAttempts int
-	RetryBackoffMS   int
-	RetryAfterCapMS  int
-	Client           *sendgrid.Client
+	// RetryBackoffMS is the base backoff delay in milliseconds used for exponential retry.
+	RetryBackoffMS int
+	// RetryAfterCapMS caps how long a 429 Retry-After header is honoured, in milliseconds.
+	RetryAfterCapMS int
+	// Client is the SendGrid client used for API requests.
+	Client *sendgrid.Client
 }
 
 // Emailer holds configuration and the SendGrid client needed to send emails.
