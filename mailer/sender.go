@@ -121,16 +121,14 @@ func (e *Emailer) SendOneWithContext(
 
 		// Retry if this is not the last attempt and the failure is transient.
 		if attempt < attempts && isTransient(statusCode, err) {
-			log.Printf("[mailer] SendOne: transient error on attempt %d/%d for %s (status %d, err: %v); retrying", attempt, attempts, recipient.Email, statusCode, err)
-
-			// Wait with backoff, but abort if parent context is cancelled.
-			timer := time.NewTimer(backoff(attempt, e.RetryBackoffMS))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, ctx.Err()
-			case <-timer.C:
+			var headers map[string][]string
+			if err == nil {
+				headers = resp.Headers
 			}
+			delay := nextDelay(statusCode, headers, attempt, e.RetryBackoffMS, e.RetryAfterCapMS)
+			log.Printf("[mailer] SendOne: transient error on attempt %d/%d for %s (status %d, err: %v); retrying in %s",
+				attempt, attempts, recipient.Email, statusCode, err, delay)
+			time.Sleep(delay)
 			continue
 		}
 

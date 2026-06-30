@@ -25,6 +25,8 @@ type Config struct {
 	RetryMaxAttempts int
 	// RetryBackoffMS is the base backoff delay in milliseconds used for exponential retry (env: RETRY_BACKOFF_MS, default 500).
 	RetryBackoffMS int
+	// RetryAfterCapMS caps how long a 429 Retry-After header is honoured, in milliseconds (env: RETRY_AFTER_CAP_MS, default 30000).
+	RetryAfterCapMS int
 	// TestMode, when true, diverts every send to TestEmails (env: TEST_MODE, default false).
 	TestMode bool
 	// TestEmails is the comma-separated test address list (env: TEST_EMAILS). Required when TestMode is true.
@@ -110,6 +112,18 @@ func Load() (*Config, error) {
 		retryBackoffMS = n
 	}
 
+	retryAfterCapMS := 30000
+	if v := strings.TrimSpace(os.Getenv("RETRY_AFTER_CAP_MS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("RETRY_AFTER_CAP_MS must be a valid integer: %w", err)
+		}
+		if n <= 0 {
+			return nil, fmt.Errorf("RETRY_AFTER_CAP_MS must be a positive integer, got %d", n)
+		}
+		retryAfterCapMS = n
+	}
+
 	testMode := true
 	if v := strings.TrimSpace(os.Getenv("TEST_MODE")); v != "" {
 		b, err := strconv.ParseBool(v)
@@ -157,6 +171,7 @@ func Load() (*Config, error) {
 		TimeoutMS:        timeoutMS,
 		RetryMaxAttempts: retryMaxAttempts,
 		RetryBackoffMS:   retryBackoffMS,
+		RetryAfterCapMS:  retryAfterCapMS,
 		TestMode:         testMode,
 		TestEmails:       testEmails,
 		Port:             port,
