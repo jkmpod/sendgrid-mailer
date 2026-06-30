@@ -1,0 +1,12 @@
+# Line-ending normalisation.
+#
+# Go and shell sources are LF on every platform. On Windows checkouts
+# (core.autocrlf=true) the working tree would otherwise be CRLF, which makes
+# gofmt / golangci-lint and the bash pre-commit hooks report every file as
+# "needs formatting" (a false positive). Pinning these to LF fixes that at the
+# source. PowerShell and batch scripts stay CRLF, as Windows expects.
+
+*.go   text eol=lf
+*.sh   text eol=lf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
