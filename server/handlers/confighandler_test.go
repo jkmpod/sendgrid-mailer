@@ -185,6 +185,21 @@ func TestHandleConfigUpdate(t *testing.T) {
 			body:       `{bad`,
 			wantStatus: http.StatusBadRequest,
 		},
+		{
+			name:       "empty fromEmail returns 400",
+			body:       `{"fromEmail": ""}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid fromEmail returns 400",
+			body:       `{"fromEmail": "not-an-email"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "empty fromName returns 400",
+			body:       `{"fromName": "   "}`,
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	ResetRuntimeConfig()

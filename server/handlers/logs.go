@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // validStatuses is the set of status values accepted by the SendGrid
@@ -20,6 +21,11 @@ var validStatuses = map[string]bool{
 	"not_delivered": true,
 	"processing":    true,
 }
+
+const (
+	defaultLogLimit = 50
+	maxLogLimit     = 1000
+)
 
 // HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
 // API and returns the raw JSON response to the client. It accepts optional
@@ -46,12 +52,12 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 		q := r.URL.Query()
 
 		// Parse limit (default 50, max 1000).
-		limit := 50
+		limit := defaultLogLimit
 		if l := q.Get("limit"); l != "" {
 			if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
 				limit = parsed
-				if limit > 1000 {
-					limit = 1000
+				if limit > maxLogLimit {
+					limit = maxLogLimit
 				}
 			}
 		}
@@ -70,12 +76,30 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 		if toEmail := q.Get("to_email"); toEmail != "" {
 			clauses = append(clauses, fmt.Sprintf(`to_email="%s"`, toEmail))
 		}
-		if fromDate := q.Get("from_date"); fromDate != "" {
-			if toDate := q.Get("to_date"); toDate != "" {
-				clauses = append(clauses, fmt.Sprintf(
-					`last_event_time BETWEEN TIMESTAMP "%s" AND TIMESTAMP "%s"`,
-					fromDate, toDate))
+		fromDate := q.Get("from_date")
+		if fromDate != "" {
+			if _, err := time.Parse(time.RFC3339, fromDate); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("invalid from_date: %v", err),
+				})
+				return
 			}
+		}
+
+		toDate := q.Get("to_date")
+		if toDate != "" {
+			if _, err := time.Parse(time.RFC3339, toDate); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("invalid to_date: %v", err),
+				})
+				return
+			}
+		}
+
+		if fromDate != "" && toDate != "" {
+			clauses = append(clauses, fmt.Sprintf(
+				`last_event_time BETWEEN TIMESTAMP "%s" AND TIMESTAMP "%s"`,
+				fromDate, toDate))
 		}
 
 		if len(clauses) > 0 {
@@ -106,6 +130,15 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 		defer resp.Body.Close()
 
 		log.Printf("[logs] SendGrid response: status=%d", resp.StatusCode)
+
+		if resp.StatusCode >= 400 {
+			body, _ := io.ReadAll(resp.Body)
+			log.Printf("[logs] SendGrid error response (status %d): %s", resp.StatusCode, string(body))
+			writeJSON(w, resp.StatusCode, map[string]string{
+				"error": fmt.Sprintf("SendGrid API returned status %d", resp.StatusCode),
+			})
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)

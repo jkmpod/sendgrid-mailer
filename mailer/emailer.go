@@ -8,6 +8,18 @@ import (
 	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
+// EmailerState captures the current runtime configuration and client.
+type EmailerState struct {
+	FromEmail        string
+	FromName         string
+	RateDelayMS      int
+	TimeoutMS        int
+	RetryMaxAttempts int
+	RetryBackoffMS   int
+	RetryAfterCapMS  int
+	Client           *sendgrid.Client
+}
+
 // Emailer holds configuration and the SendGrid client needed to send emails.
 type Emailer struct {
 	// MaxBatchSize is retained for backward compatibility. The app sends one
@@ -39,11 +51,20 @@ func (e *Emailer) SetFrom(email, name string) {
 	e.fromName = name
 }
 
-// GetFrom returns the current sender address. Thread-safe.
-func (e *Emailer) GetFrom() (email, name string) {
+// GetState returns the current runtime state of the emailer. Thread-safe.
+func (e *Emailer) GetState() EmailerState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.fromEmail, e.fromName
+	return EmailerState{
+		FromEmail:        e.fromEmail,
+		FromName:         e.fromName,
+		RateDelayMS:      e.RateDelayMS,
+		TimeoutMS:        e.TimeoutMS,
+		RetryMaxAttempts: e.RetryMaxAttempts,
+		RetryBackoffMS:   e.RetryBackoffMS,
+		RetryAfterCapMS:  e.RetryAfterCapMS,
+		Client:           e.client,
+	}
 }
 
 // SetBaseURL redirects the SendGrid client to the given base URL. Intended

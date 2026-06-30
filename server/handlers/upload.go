@@ -13,6 +13,8 @@ import (
 	"github.com/jkmpod/sendgrid-mailer/models"
 )
 
+const previewCount = 3
+
 // HandleUpload returns an http.HandlerFunc that accepts a multipart/form-data
 // POST with a CSV file field named "file". It saves the file to a temp
 // directory, parses it with loader.LoadFromCSV, and returns JSON with the
@@ -73,7 +75,7 @@ func HandleUpload(cfg *config.Config) http.HandlerFunc {
 		}
 
 		columns := columnNames(recipients)
-		preview := previewRows(recipients, 3)
+		preview := previewRows(recipients, previewCount)
 
 		// Store column list for the compose endpoint.
 		SetLastColumns(columns)

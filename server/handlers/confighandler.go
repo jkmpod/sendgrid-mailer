@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
+	"strings"
 
 	"github.com/jkmpod/sendgrid-mailer/config"
 	"github.com/jkmpod/sendgrid-mailer/mailer"
@@ -59,12 +62,32 @@ func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc 
 			log.Printf("[config] test emails set to %v", req.TestEmails)
 		}
 		if req.FromEmail != nil {
-			SetRuntimeFromEmail(*req.FromEmail)
-			log.Printf("[config] from email set to %q", *req.FromEmail)
+			email := strings.TrimSpace(*req.FromEmail)
+			if email == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": "fromEmail cannot be empty",
+				})
+				return
+			}
+			if _, err := mail.ParseAddress(email); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("invalid fromEmail: %v", err),
+				})
+				return
+			}
+			SetRuntimeFromEmail(email)
+			log.Printf("[config] from email set to %q", email)
 		}
 		if req.FromName != nil {
-			SetRuntimeFromName(*req.FromName)
-			log.Printf("[config] from name set to %q", *req.FromName)
+			name := strings.TrimSpace(*req.FromName)
+			if name == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": "fromName cannot be empty",
+				})
+				return
+			}
+			SetRuntimeFromName(name)
+			log.Printf("[config] from name set to %q", name)
 		}
 
 		// Sync from address to Emailer if either field was updated.

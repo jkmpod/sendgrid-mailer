@@ -7,6 +7,8 @@ import (
 	"github.com/jkmpod/sendgrid-mailer/config"
 )
 
+const maxSendLogEntries = 50
+
 // subjectMu guards lastSubject and sendLog. A mutex is needed because HTTP
 // handlers run concurrently in separate goroutines. Without a mutex, one
 // goroutine could read while another is mid-write, causing a data race —
@@ -55,13 +57,13 @@ func GetLastSubject() string {
 }
 
 // AppendSendLog adds an entry to the in-memory send log.
-// The log is capped at 50 entries — oldest entries are dropped first.
+// The log is capped at maxSendLogEntries entries — oldest entries are dropped first.
 func AppendSendLog(entry SendLogEntry) {
 	subjectMu.Lock()
 	defer subjectMu.Unlock()
 	sendLog = append(sendLog, entry)
-	if len(sendLog) > 50 {
-		sendLog = sendLog[len(sendLog)-50:]
+	if len(sendLog) > maxSendLogEntries {
+		sendLog = sendLog[len(sendLog)-maxSendLogEntries:]
 	}
 }
 
