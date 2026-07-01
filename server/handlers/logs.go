@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,8 +24,9 @@ var validStatuses = map[string]bool{
 }
 
 const (
-	defaultLogLimit = 50
-	maxLogLimit     = 1000
+	defaultLogLimit      = 50
+	maxLogLimit          = 1000
+	maxUpstreamErrDetail = 512
 )
 
 // HandleLogs returns an http.HandlerFunc that calls the SendGrid Activity Feed
@@ -62,20 +64,50 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 			}
 		}
 
+		// Validate filter parameters before building the request URL.
+		// subject: SendGrid DSL has no documented quote-escaping, so reject
+		// values that contain a double-quote to prevent clause breakout.
+		subject := q.Get("subject")
+		if strings.Contains(subject, `"`) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": `subject may not contain a double-quote`,
+			})
+			return
+		}
+
+		// to_email: parse with net/mail and interpolate the normalised bare
+		// address (addr.Address) rather than the raw input. ParseAddress
+		// accepts display-name forms such as `"Name" <user@example.com>`,
+		// which contain a literal double-quote that would break out of the
+		// DSL clause. Using addr.Address strips the display name and yields a
+		// quote-free local@domain string safe to interpolate.
+		toEmail := q.Get("to_email")
+		if toEmail != "" {
+			addr, err := mail.ParseAddress(toEmail)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("invalid to_email: %v", err),
+				})
+				return
+			}
+			toEmail = addr.Address // normalised bare email, no display-name quotes
+		}
+
 		sgURL := fmt.Sprintf("%s?limit=%d", baseURL, limit)
 
 		// Build query clauses from filter parameters.
 		var clauses []string
 
-		if subject := q.Get("subject"); subject != "" {
+		if subject != "" {
 			clauses = append(clauses, fmt.Sprintf(`subject="%s"`, subject))
 		}
 		if status := q.Get("status"); status != "" && validStatuses[status] {
 			clauses = append(clauses, fmt.Sprintf(`status="%s"`, status))
 		}
-		if toEmail := q.Get("to_email"); toEmail != "" {
+		if toEmail != "" {
 			clauses = append(clauses, fmt.Sprintf(`to_email="%s"`, toEmail))
 		}
+
 		fromDate := q.Get("from_date")
 		if fromDate != "" {
 			if _, err := time.Parse(time.RFC3339, fromDate); err != nil {
@@ -94,6 +126,14 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 				})
 				return
 			}
+		}
+
+		// Both dates must be supplied together.
+		if (fromDate != "") != (toDate != "") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "from_date and to_date must be provided together",
+			})
+			return
 		}
 
 		if fromDate != "" && toDate != "" {
@@ -134,8 +174,13 @@ func handleLogsWithBaseURL(baseURL, apiKey string) http.HandlerFunc {
 		if resp.StatusCode >= 400 {
 			body, _ := io.ReadAll(resp.Body)
 			log.Printf("[logs] SendGrid error response (status %d): %s", resp.StatusCode, string(body))
+			detail := string(body)
+			if len(body) > maxUpstreamErrDetail {
+				detail = string(body[:maxUpstreamErrDetail])
+			}
 			writeJSON(w, resp.StatusCode, map[string]string{
-				"error": fmt.Sprintf("SendGrid API returned status %d", resp.StatusCode),
+				"error":  fmt.Sprintf("SendGrid API returned status %d", resp.StatusCode),
+				"detail": detail,
 			})
 			return
 		}

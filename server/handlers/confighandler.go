@@ -40,7 +40,8 @@ type configUpdateRequest struct {
 
 // HandleConfigUpdate returns an http.HandlerFunc that accepts a JSON POST
 // to update runtime configuration. Changes are in-memory only and reset
-// on app restart.
+// on app restart. All fields are validated before any mutation is applied,
+// so a rejected request performs zero state changes.
 func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -53,6 +54,31 @@ func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc 
 			return
 		}
 
+		// Validation phase: check every field before applying any mutation.
+		var trimmedEmail, trimmedName string
+		if req.FromEmail != nil {
+			trimmedEmail = strings.TrimSpace(*req.FromEmail)
+			if trimmedEmail == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": "fromEmail cannot be empty",
+				})
+				return
+			}
+			if _, err := mail.ParseAddress(trimmedEmail); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("invalid fromEmail: %v", err),
+				})
+				return
+			}
+		}
+		if req.FromName != nil {
+			// Empty name is accepted (not rejected). Note: the runtime override
+			// treats "" as "unset", so an empty value falls back to the
+			// configured FROM_NAME in EffectiveFromName rather than clearing it.
+			trimmedName = strings.TrimSpace(*req.FromName)
+		}
+
+		// Apply phase: only reached when all validation has passed.
 		if req.TestMode != nil {
 			SetRuntimeTestMode(*req.TestMode)
 			log.Printf("[config] test mode set to %v", *req.TestMode)
@@ -62,32 +88,12 @@ func HandleConfigUpdate(e *mailer.Emailer, cfg *config.Config) http.HandlerFunc 
 			log.Printf("[config] test emails set to %v", req.TestEmails)
 		}
 		if req.FromEmail != nil {
-			email := strings.TrimSpace(*req.FromEmail)
-			if email == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": "fromEmail cannot be empty",
-				})
-				return
-			}
-			if _, err := mail.ParseAddress(email); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("invalid fromEmail: %v", err),
-				})
-				return
-			}
-			SetRuntimeFromEmail(email)
-			log.Printf("[config] from email set to %q", email)
+			SetRuntimeFromEmail(trimmedEmail)
+			log.Printf("[config] from email set to %q", trimmedEmail)
 		}
 		if req.FromName != nil {
-			name := strings.TrimSpace(*req.FromName)
-			if name == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": "fromName cannot be empty",
-				})
-				return
-			}
-			SetRuntimeFromName(name)
-			log.Printf("[config] from name set to %q", name)
+			SetRuntimeFromName(trimmedName)
+			log.Printf("[config] from name set to %q", trimmedName)
 		}
 
 		// Sync from address to Emailer if either field was updated.

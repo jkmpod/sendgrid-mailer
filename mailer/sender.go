@@ -35,8 +35,8 @@ type SendResult struct {
 // for the given recipient, returning a descriptive error if not. It performs
 // no network I/O — use it to fail fast before a bulk send.
 func (e *Emailer) ValidateSend(recipient models.EmailRecipient, subject, htmlTemplate string, cc, bcc, categories []string) error {
-	state := e.GetState()
-	from := mail.NewEmail(state.FromName, state.FromEmail)
+	fromEmail, fromName := e.GetFrom()
+	from := mail.NewEmail(fromName, fromEmail)
 	_, err := BuildMail(from, subject, htmlTemplate, recipient, cc, bcc, categories)
 	return err
 }
@@ -53,27 +53,31 @@ func (e *Emailer) SendOne(
 	bcc []string,
 	categories []string,
 ) (map[string]interface{}, error) {
-	state := e.GetState()
-	from := mail.NewEmail(state.FromName, state.FromEmail)
+	fromEmail, fromName := e.GetFrom()
+	from := mail.NewEmail(fromName, fromEmail)
 
 	msg, err := BuildMail(from, subject, htmlTemplate, recipient, cc, bcc, categories)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mail: %w", err)
 	}
 
-	attempts := state.RetryMaxAttempts
+	e.mu.Lock()
+	client := e.client
+	e.mu.Unlock()
+
+	attempts := e.RetryMaxAttempts
 	if attempts < 1 {
 		attempts = 1
 	}
 	for attempt := 1; attempt <= attempts; attempt++ {
 		var ctx context.Context
 		var cancel context.CancelFunc
-		if state.TimeoutMS > 0 {
-			ctx, cancel = context.WithTimeout(context.Background(), time.Duration(state.TimeoutMS)*time.Millisecond)
+		if e.TimeoutMS > 0 {
+			ctx, cancel = context.WithTimeout(context.Background(), time.Duration(e.TimeoutMS)*time.Millisecond)
 		} else {
 			ctx, cancel = context.WithCancel(context.Background())
 		}
-		resp, err := state.Client.SendWithContext(ctx, msg)
+		resp, err := client.SendWithContext(ctx, msg)
 		cancel()
 
 		var statusCode int
@@ -104,7 +108,7 @@ func (e *Emailer) SendOne(
 			if err == nil {
 				headers = resp.Headers
 			}
-			delay := nextDelay(statusCode, headers, attempt, state.RetryBackoffMS, state.RetryAfterCapMS)
+			delay := nextDelay(statusCode, headers, attempt, e.RetryBackoffMS, e.RetryAfterCapMS)
 			log.Printf("[mailer] SendOne: transient error on attempt %d/%d for %s (status %d, err: %v); retrying in %s",
 				attempt, attempts, recipient.Email, statusCode, err, delay)
 			time.Sleep(delay)
@@ -157,12 +161,10 @@ func (e *Emailer) SendTest(
 	testSubject := "[TEST] " + subject
 	log.Printf("[mailer] SendTest: sending to %d test addresses, subject=%q", len(testEmails), testSubject)
 
-	state := e.GetState()
-
 	var sr SendResult
 	for i, addr := range testEmails {
 		if i > 0 {
-			time.Sleep(time.Duration(state.RateDelayMS) * time.Millisecond)
+			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
 		r := models.EmailRecipient{
@@ -202,13 +204,11 @@ func (e *Emailer) SendBulk(
 ) (SendResult, error) {
 	log.Printf("[mailer] SendBulk: starting send to %d recipients", len(recipients))
 
-	state := e.GetState()
-
 	var sr SendResult
 
 	for i, r := range recipients {
 		if i > 0 {
-			time.Sleep(time.Duration(state.RateDelayMS) * time.Millisecond)
+			time.Sleep(time.Duration(e.RateDelayMS) * time.Millisecond)
 		}
 
 		_, err := e.SendOne(r, subject, htmlTemplate, cc, bcc, categories)
