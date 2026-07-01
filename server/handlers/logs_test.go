@@ -29,6 +29,7 @@ func TestHandleLogs(t *testing.T) {
 		query      string // query string appended to /logs
 		wantInURL  string // substring expected in the forwarded URL
 		wantAbsent string // substring that must NOT appear (empty = skip check)
+		wantStatus int    // expected HTTP status code (defaults to 200)
 	}{
 		{
 			name:      "default limit",
@@ -61,6 +62,11 @@ func TestHandleLogs(t *testing.T) {
 			wantInURL: `subject="Hello"`,
 		},
 		{
+			name:       "subject with double-quote returns 400",
+			query:      `?subject=Hello%22World`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:      "status filter not_delivered",
 			query:     "?status=not_delivered",
 			wantInURL: `status="not_delivered"`,
@@ -86,19 +92,54 @@ func TestHandleLogs(t *testing.T) {
 			wantInURL: `to_email="user@example.com"`,
 		},
 		{
+			name:       "invalid to_email returns 400",
+			query:      "?to_email=not-an-email",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			// ParseAddress accepts display-name forms such as "x" <a@b.com>,
+			// which contain a literal double-quote. The handler must normalise
+			// to the bare addr.Address so only a@b.com reaches the DSL clause.
+			name:       "display-name to_email normalised to bare address",
+			query:      `?to_email=%22x%22+%3Ca%40b.com%3E`, // "x" <a@b.com>
+			wantInURL:  `to_email="a@b.com"`,
+			wantAbsent: `"x"`,
+		},
+		{
 			name:      "date range filter",
 			query:     "?from_date=2026-03-01T00:00:00Z&to_date=2026-03-28T23:59:59Z",
 			wantInURL: "BETWEEN TIMESTAMP",
 		},
 		{
-			name:       "from_date without to_date is ignored",
+			name:       "from_date without to_date returns 400",
 			query:      "?from_date=2026-03-01T00:00:00Z",
-			wantAbsent: "BETWEEN",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "to_date without from_date returns 400",
+			query:      "?to_date=2026-03-28T23:59:59Z",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid from_date returns 400",
+			query:      "?from_date=invalid-date",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid to_date returns 400",
+			query:      "?from_date=2026-03-01T00:00:00Z&to_date=not-a-date",
+			wantStatus: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Default wantStatus to 200 if not specified.
+			wantStatus := tt.wantStatus
+			if wantStatus == 0 {
+				wantStatus = http.StatusOK
+			}
+
 			// Create handler pointing at the mock server instead of real SendGrid.
 			handler := handleLogsWithBaseURL(sgServer.URL+"/v3/messages", "SG.test-key")
 
@@ -106,8 +147,20 @@ func TestHandleLogs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
 
+			if rr.Code != wantStatus {
+				t.Fatalf("status = %d, want %d; body: %s", rr.Code, wantStatus, rr.Body.String())
+			}
+
 			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d, want 200; body: %s", rr.Code, rr.Body.String())
+				// For non-200, just ensure it's JSON with an error field.
+				var resp map[string]string
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to parse error response: %v", err)
+				}
+				if resp["error"] == "" {
+					t.Errorf("expected non-empty error field in response: %v", resp)
+				}
+				return
 			}
 
 			var resp map[string]string
@@ -127,7 +180,40 @@ func TestHandleLogs(t *testing.T) {
 	}
 }
 
-func TestHandleLogs_SendGridError(t *testing.T) {
+func TestHandleLogs_SendGridAPIError(t *testing.T) {
+	// Mock SendGrid API server that returns 401 Unauthorised.
+	sgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain") // Not JSON
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Permission denied"))
+	}))
+	defer sgServer.Close()
+
+	handler := handleLogsWithBaseURL(sgServer.URL, "SG.test-key")
+
+	req := httptest.NewRequest("GET", "/logs", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	// Handler should return a JSON error wrapping the upstream status.
+	if !strings.Contains(resp["error"], "SendGrid API returned status 401") {
+		t.Errorf("error = %q, want substring %q", resp["error"], "SendGrid API returned status 401")
+	}
+	// Truncated upstream body must appear as the detail field.
+	if resp["detail"] != "Permission denied" {
+		t.Errorf("detail = %q, want %q", resp["detail"], "Permission denied")
+	}
+}
+
+func TestHandleLogs_SendGridNetworkError(t *testing.T) {
 	// Point at a server that immediately closes the connection.
 	handler := handleLogsWithBaseURL("http://127.0.0.1:1", "SG.test-key")
 

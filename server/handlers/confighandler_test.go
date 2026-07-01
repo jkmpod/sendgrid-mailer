@@ -185,6 +185,23 @@ func TestHandleConfigUpdate(t *testing.T) {
 			body:       `{bad`,
 			wantStatus: http.StatusBadRequest,
 		},
+		{
+			name:       "empty fromEmail returns 400",
+			body:       `{"fromEmail": ""}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid fromEmail returns 400",
+			body:       `{"fromEmail": "not-an-email"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:         "empty fromName is allowed",
+			body:         `{"fromName": "   "}`,
+			wantStatus:   http.StatusOK,
+			wantTestMode: false,
+			wantFrom:     "new@example.com",
+		},
 	}
 
 	ResetRuntimeConfig()
@@ -219,5 +236,44 @@ func TestHandleConfigUpdate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHandleConfigUpdate_Atomicity verifies that a request containing an
+// invalid field causes zero state mutations — neither fromEmail nor fromName
+// is modified when validation fails.
+func TestHandleConfigUpdate_Atomicity(t *testing.T) {
+	cfg := &config.Config{
+		APIKey:    "SG.test",
+		FromEmail: "original@example.com",
+		FromName:  "Original",
+	}
+	e := mailer.NewEmailer(cfg)
+
+	ResetRuntimeConfig()
+
+	// Record pre-request effective values.
+	wantEmail := EffectiveFromEmail(cfg)
+	wantName := EffectiveFromName(cfg)
+
+	// POST a body where fromEmail is invalid but fromName is valid.
+	// The handler must reject the whole request without applying fromName.
+	body := `{"fromEmail": "not-valid", "fromName": "Changed"}`
+	handler := HandleConfigUpdate(e, cfg)
+	req := httptest.NewRequest("POST", "/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+
+	// State must be unchanged.
+	if got := EffectiveFromEmail(cfg); got != wantEmail {
+		t.Errorf("EffectiveFromEmail after rejected request = %q, want %q (partial mutation)", got, wantEmail)
+	}
+	if got := EffectiveFromName(cfg); got != wantName {
+		t.Errorf("EffectiveFromName after rejected request = %q, want %q (partial mutation)", got, wantName)
 	}
 }
